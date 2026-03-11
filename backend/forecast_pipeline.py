@@ -6,7 +6,7 @@ from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler
 import lightgbm as lgb
 
-from data_loader import DataLoader
+from .data_loader import DataLoader
 
 
 class ForecastPipeline:
@@ -329,17 +329,19 @@ class ForecastPipeline:
 
         # Post-processing: zero-forecast gate
         # If stock was 0 for multiple weeks, set forecast to 0
-        recent_qty = df.sort_values("week_start").groupby("combo_id")["qty_sold"].tail(4)
-        is_zero_forecast = (recent_qty == 0).groupby(recent_qty.index).mean() > 0.75
+        recent_tail = df.sort_values("week_start").groupby("combo_id").tail(4)
+        is_zero_forecast = (recent_tail["qty_sold"] == 0).groupby(recent_tail["combo_id"]).mean() > 0.75
 
         # ROS blend: 50% point_forecast + 50% recent average
-        recent_avg = df.sort_values("week_start").groupby("combo_id")["qty_sold"].tail(4).groupby("combo_id").mean()
+        recent_avg = recent_tail.groupby("combo_id")["qty_sold"].mean()
 
         # Build results
         results = []
-        for _, row in latest.iterrows():
+        latest["point_forecast"] = point_forecast
+        
+        for idx, row in latest.iterrows():
             combo_id = row["combo_id"]
-            forecast = point_forecast[latest["combo_id"] == combo_id][0]
+            forecast = row["point_forecast"]
             recent = recent_avg.get(combo_id, 0)
 
             # Apply ROS blend

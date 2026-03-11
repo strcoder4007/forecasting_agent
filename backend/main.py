@@ -9,8 +9,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from data_loader import DataLoader
-from forecast_pipeline import ForecastPipeline
+from .data_loader import DataLoader, DataLoadError
+from .forecast_pipeline import ForecastPipeline
 
 # Initialize FastAPI app
 app = FastAPI(title="Demand Forecasting Agent", version="1.0.0")
@@ -137,11 +137,18 @@ async def run_forecast():
                         sum(wmape_values) / len(wmape_values) if wmape_values else 0
                     )
 
-        except Exception as e:
+        except DataLoadError as e:
             with runs_lock:
                 runs_storage[run_id]["status"] = "failed"
                 runs_storage[run_id]["error"] = str(e)
-                runs_storage[run_id]["message"] = f"Error: {str(e)}"
+                runs_storage[run_id]["message"] = f"Data error: {str(e)}"
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            with runs_lock:
+                runs_storage[run_id]["status"] = "failed"
+                runs_storage[run_id]["error"] = repr(e)
+                runs_storage[run_id]["message"] = f"Unexpected error ({type(e).__name__}): {str(e)}"
 
     thread = threading.Thread(target=run_forecast_thread, daemon=True)
     thread.start()

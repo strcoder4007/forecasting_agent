@@ -4,6 +4,11 @@ from typing import Optional
 import pandas as pd
 
 
+class DataLoadError(Exception):
+    """Custom exception for data loading errors."""
+    pass
+
+
 class DataLoader:
     """Loads and validates data from CSV files."""
 
@@ -75,14 +80,32 @@ class DataLoader:
         status = "ok" if not warnings else "warning"
         return {"status": status, "file_info": file_info, "warnings": warnings}
 
+    def _validate_columns(self, df: pd.DataFrame, required_source_cols: dict, file_name: str) -> None:
+        """Validate that required columns exist in the source data."""
+        missing_cols = []
+        for internal_name, source_name in required_source_cols.items():
+            if source_name not in df.columns:
+                missing_cols.append(f"'{source_name}' (expected as '{internal_name}')")
+
+        if missing_cols:
+            raise DataLoadError(
+                f"Missing required columns in {file_name}: {', '.join(missing_cols)}. "
+                f"Available columns: {list(df.columns)}. "
+                f"Please check your data file matches the expected format."
+            )
+
     def load_sales(self) -> pd.DataFrame:
         """Load and process sales data."""
         filepath = self.DATA_DIR / "SALES_MASTER.xls"
         df = pd.read_csv(filepath)
 
+        # Validate required columns exist before renaming
+        self._validate_columns(df, self.COLUMN_MAPPINGS["sales"], "SALES_MASTER.xls")
+
         # Apply column mapping
         mapping = self.COLUMN_MAPPINGS["sales"]
-        df = df.rename(columns=mapping)
+        inverse_mapping = {v: k for k, v in mapping.items()}
+        df = df.rename(columns=inverse_mapping)
 
         # Parse date
         df["date"] = pd.to_datetime(df["date"], format="%Y-%m-%d")
@@ -98,9 +121,13 @@ class DataLoader:
         filepath = self.DATA_DIR / "SOH_MASTER.xls"
         df = pd.read_csv(filepath)
 
+        # Validate required columns exist before renaming
+        self._validate_columns(df, self.COLUMN_MAPPINGS["stock"], "SOH_MASTER.xls")
+
         # Apply column mapping
         mapping = self.COLUMN_MAPPINGS["stock"]
-        df = df.rename(columns=mapping)
+        inverse_mapping = {v: k for k, v in mapping.items()}
+        df = df.rename(columns=inverse_mapping)
 
         # Parse date
         df["date"] = pd.to_datetime(df["date"], format="%Y-%m-%d")
@@ -116,9 +143,13 @@ class DataLoader:
         filepath = self.DATA_DIR / "ITEM_MASTER.xls"
         df = pd.read_csv(filepath)
 
+        # Validate required columns exist before renaming
+        self._validate_columns(df, self.COLUMN_MAPPINGS["items"], "ITEM_MASTER.xls")
+
         # Apply column mapping
         mapping = self.COLUMN_MAPPINGS["items"]
-        df = df.rename(columns=mapping)
+        inverse_mapping = {v: k for k, v in mapping.items()}
+        df = df.rename(columns=inverse_mapping)
 
         self.items_df = df
         return df
@@ -128,9 +159,13 @@ class DataLoader:
         filepath = self.DATA_DIR / "STORE_MASTER.csv"
         df = pd.read_csv(filepath)
 
+        # Validate required columns exist before renaming
+        self._validate_columns(df, self.COLUMN_MAPPINGS["stores"], "STORE_MASTER.csv")
+
         # Apply column mapping
         mapping = self.COLUMN_MAPPINGS["stores"]
-        df = df.rename(columns=mapping)
+        inverse_mapping = {v: k for k, v in mapping.items()}
+        df = df.rename(columns=inverse_mapping)
 
         self.stores_df = df
         return df
