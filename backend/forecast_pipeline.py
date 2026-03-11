@@ -362,12 +362,12 @@ class ForecastPipeline:
             # handle any potential nans
             ridge_preds = np.nan_to_num(ridge_preds, nan=0.0)
 
-            self._log("Training LightGBM regressor (n_estimators=150, learning_rate=0.05, objective='poisson')...")
+            self._log("Training LightGBM regressor (n_estimators=150, learning_rate=0.05, objective='mae')...")
             lgb_model = lgb.LGBMRegressor(
                 n_estimators=150,
                 max_depth=5,
                 learning_rate=0.05,
-                objective="poisson",
+                objective="mae",
                 verbose=-1,
                 random_state=42
             )
@@ -575,6 +575,7 @@ class ForecastPipeline:
                 "demand_segment": segment,
                 "is_zero_forecast": 1 if final_forecast == 0 else 0,
                 "wmape": model_outputs.get("val_wmape", 0.0),
+                "mape": model_outputs.get("val_mape", 0.0),
             })
 
         return results
