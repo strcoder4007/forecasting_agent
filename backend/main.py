@@ -54,6 +54,7 @@ class ForecastStatusResponse(BaseModel):
     progress: float
     stage: str
     message: str
+    logs: list[str] = []
 
 
 class HistoryItem(BaseModel):
@@ -103,6 +104,7 @@ async def run_forecast():
             "avg_wmape": 0.0,
             "results": None,
             "error": None,
+            "logs": [],
         }
 
     # Start forecast in background thread
@@ -163,6 +165,8 @@ def _update_progress(run_id: str, progress: float, stage: str, message: str):
             runs_storage[run_id]["progress"] = progress
             runs_storage[run_id]["stage"] = stage
             runs_storage[run_id]["message"] = message
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            runs_storage[run_id]["logs"].append(f"[{timestamp}] [{stage}] {message}")
 
 
 @app.get("/api/forecast/status/{run_id}", response_model=ForecastStatusResponse)
@@ -179,6 +183,7 @@ async def get_forecast_status(run_id: str):
             progress=run["progress"],
             stage=run["stage"],
             message=run["message"],
+            logs=run.get("logs", []),
         )
 
 
@@ -240,6 +245,17 @@ async def get_history_item(run_id: str):
             "avg_wmape": run.get("avg_wmape", 0.0),
             "error": run.get("error"),
         }
+
+
+@app.delete("/api/history/{run_id}")
+async def delete_run(run_id: str):
+    """Delete a forecast run."""
+    with runs_lock:
+        if run_id not in runs_storage:
+            raise HTTPException(status_code=404, detail="Run not found")
+
+        del runs_storage[run_id]
+        return {"message": "Run deleted successfully", "run_id": run_id}
 
 
 @app.get("/api/export/{run_id}")

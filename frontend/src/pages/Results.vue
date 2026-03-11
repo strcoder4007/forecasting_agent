@@ -46,6 +46,15 @@
           </svg>
           Export CSV
         </button>
+        <button @click="deleteRun" class="btn btn-danger" :disabled="!selectedRunId">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            <line x1="10" y1="11" x2="10" y2="17"/>
+            <line x1="14" y1="11" x2="14" y2="17"/>
+          </svg>
+          Delete
+        </button>
       </div>
 
       <!-- Stats -->
@@ -174,6 +183,7 @@
 
 <script>
 import axios from 'axios'
+import { saveResults, getResults } from '../utils/db'
 
 export default {
   name: 'Results',
@@ -235,8 +245,15 @@ export default {
       this.loading = true
       this.error = null
       try {
-        const res = await axios.get(`/api/forecast/results/${this.selectedRunId}`)
-        this.results = res.data.rows || []
+        let rows = await getResults(this.selectedRunId)
+        if (!rows) {
+          const res = await axios.get(`/api/forecast/results/${this.selectedRunId}`)
+          rows = res.data.rows || []
+          if (rows.length > 0) {
+            await saveResults(this.selectedRunId, rows)
+          }
+        }
+        this.results = rows
         this.page = 0
       } catch (e) {
         this.error = e.response?.data?.detail || e.message
@@ -244,8 +261,47 @@ export default {
       this.loading = false
     },
     async exportCSV() {
+      if (!this.results || !this.results.length) return
+      
+      const keys = Object.keys(this.results[0])
+      let csvContent = keys.join(',') + '\n'
+      
+      this.results.forEach(row => {
+        csvContent += keys.map(k => {
+          let val = row[k] === null || row[k] === undefined ? '' : row[k]
+          // wrap string in quotes if it contains commas
+          if (typeof val === 'string' && val.includes(',')) {
+            val = `"${val}"`
+          }
+          return val
+        }).join(',') + '\n'
+      })
+      
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement('a')
+      const url = URL.createObjectURL(blob)
+      link.setAttribute('href', url)
+      link.setAttribute('download', `forecast_${this.selectedRunId}.csv`)
+      link.style.visibility = 'hidden'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    },
+    async deleteRun() {
       if (!this.selectedRunId) return
-      window.open(`/api/export/${this.selectedRunId}`, '_blank')
+      
+      if (!confirm('Are you sure you want to delete this forecast run? This action cannot be undone.')) {
+        return
+      }
+      
+      try {
+        await axios.delete(`/api/history/${this.selectedRunId}`)
+        this.results = []
+        this.selectedRunId = ''
+        await this.loadHistory()
+      } catch (e) {
+        this.error = e.response?.data?.detail || e.message
+      }
     },
     formatDate(dateStr) {
       return new Date(dateStr).toLocaleDateString('en-US', { 

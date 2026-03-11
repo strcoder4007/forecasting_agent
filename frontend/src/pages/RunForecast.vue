@@ -60,6 +60,16 @@
             </div>
           </div>
 
+          <div class="logs-card">
+            <div class="logs-header">Execution Logs</div>
+            <div class="logs-container" ref="logsContainer">
+              <div v-if="logs.length === 0" class="log-line empty">Waiting for logs...</div>
+              <div v-for="(log, idx) in logs" :key="idx" class="log-line">
+                <span class="log-text">{{ log }}</span>
+              </div>
+            </div>
+          </div>
+
           <button @click="checkStatus" class="btn btn-secondary">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
               <polyline points="23 4 23 10 17 10"/>
@@ -158,7 +168,8 @@ export default {
       stage: '',
       message: '',
       error: null,
-      pollInterval: null
+      pollInterval: null,
+      logs: []
     }
   },
   beforeUnmount() {
@@ -176,6 +187,7 @@ export default {
         this.progress = 0
         this.stage = 'starting'
         this.message = 'Forecast started...'
+        this.logs = []
 
         this.pollInterval = setInterval(() => this.checkStatus(), 2000)
       } catch (e) {
@@ -192,6 +204,13 @@ export default {
         this.progress = data.progress
         this.stage = data.stage
         this.message = data.message
+        this.logs = data.logs || []
+        
+        this.$nextTick(() => {
+          if (this.$refs.logsContainer) {
+            this.$refs.logsContainer.scrollTop = this.$refs.logsContainer.scrollHeight
+          }
+        })
 
         if (data.status === 'completed') {
           this.running = false
@@ -246,6 +265,55 @@ export default {
 .page-subtitle {
   font-size: 14px;
   color: #64748B;
+}
+
+/* Logs */
+.logs-card {
+  margin-top: 24px;
+  background: #0f172a;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #1e293b;
+  display: flex;
+  flex-direction: column;
+}
+
+.logs-header {
+  background: #1e293b;
+  color: #94a3b8;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-family: 'Fira Code', monospace;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #334155;
+}
+
+.logs-container {
+  padding: 16px;
+  max-height: 250px;
+  overflow-y: auto;
+  font-family: 'Fira Code', monospace;
+  font-size: 13px;
+  color: #a5b4fc;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.log-line {
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.log-line.empty {
+  color: #64748b;
+  font-style: italic;
+}
+
+.log-text {
+  color: #e2e8f0;
 }
 
 .grid-layout {

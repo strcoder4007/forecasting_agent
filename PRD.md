@@ -80,9 +80,9 @@
 | **Weekly Aggregation** | Aggregate daily data to weekly (Monday start). |
 | **False-Zero Correction** | Flag items with zero stock and zero sales, impute with category median. |
 | **Demand Segmentation** | Classify combos as smooth, intermittent, or lumpy based on CV and zero %. |
-| **Feature Engineering** | Compute 10 features (shifted to avoid leakage). |
-| **Model Training** | Two-round walk-forward validation. Route models by segment. |
-| **Inference** | Generate forecasts with post-processing (bias correction + ROS blend). |
+| **Feature Engineering** | Compute 12 features including real pricing, promotional signals (discount_pct), and Categorical Target Encoding. |
+| **Model Training** | Two-round walk-forward validation. Route predictions to the lowest WMAPE model per segment. |
+| **Inference** | Generate forecasts utilizing segment-routed best models with post-processing (bias correction + ROS blend). |
 | **CI Estimation** | 80% confidence intervals from validation residuals. |
 | **Results Export** | Return forecasts as JSON/CSV. |
 
@@ -91,10 +91,10 @@
 | Feature | Description |
 |---------|-------------|
 | **Dashboard** | Show last run status, summary metrics (total combos, avg WMAPE). Show data file validation status. |
-| **Run Trigger** | Button to start forecast. Show progress bar during run. |
-| **Results View** | Table with forecast data. Sortable columns. |
-| **Export** | Download results as CSV. |
-| **History** | List of past runs with timestamps and status. |
+| **Run Trigger** | Button to start forecast. Show progress bar and detailed execution logs during run. |
+| **Results View** | Table with forecast data. Sortable columns. Cached locally using IndexedDB for fast loading. |
+| **Export** | Generate and download results as CSV purely client-side from IndexedDB. |
+| **History** | List of past runs with timestamps, status, and validation WMAPE. |
 
 ### 4.2 Data Flow
 

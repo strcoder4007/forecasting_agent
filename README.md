@@ -6,10 +6,12 @@ A machine learning-powered demand forecasting system built with FastAPI and Vue.
 
 - **Data Validation**: Validates sales, stock, item, and store master data files
 - **Multi-Stage Pipeline**: Weekly aggregation, false-zero correction, demand segmentation
-- **Ensemble Models**: Combines Seasonal Naive, Ridge Regression, and LightGBM predictions
-- **Confidence Intervals**: Provides 80% confidence bounds for forecasts
-- **REST API**: Full REST API for running forecasts and retrieving results
-- **Progress Tracking**: Real-time progress updates during forecast runs
+- **Advanced Feature Engineering**: Includes Categorical Target Encoding on `combo_id` to memorize baseline volume and utilizes actual pricing and promotional markdown (`discount_pct`) signals.
+- **Segment-Based Model Routing**: Dynamically evaluates and routes predictions between Seasonal Naive, Ridge Regression (lsqr), and LightGBM based on the lowest WMAPE per demand segment (Smooth, Intermittent, Lumpy).
+- **Confidence Intervals**: Provides 80% confidence bounds for forecasts.
+- **REST API**: Full REST API for running forecasts and retrieving results.
+- **Real-Time Execution Logs**: Granular progress tracking and detailed execution logs streamed to the UI.
+- **Offline Storage & Export**: Forecast results are cached locally in the browser using IndexedDB for lightning-fast reads and purely client-side CSV exports.
 
 ## Tech Stack
 
@@ -99,15 +101,15 @@ The application expects the following data files in `backend/data/`:
 
 ## Forecasting Pipeline
 
-The pipeline consists of 8 stages:
+The pipeline processes all ~48,000 SKU-store combinations without arbitrary limits and consists of 8 stages:
 
 1. **Data Loading** (5%): Load and validate data files
 2. **Weekly Aggregation** (15%): Aggregate daily data to weekly (Monday start)
 3. **False-Zero Correction** (25%): Identify and correct stock-outs mislabeled as zero demand
 4. **Demand Segmentation** (35%): Classify demand patterns (smooth, intermittent, lumpy)
-5. **Feature Engineering** (45%): Compute 10 features per combo-week
+5. **Feature Engineering** (45%): Compute 12 features per combo-week including actual prices, discount percentages, and Categorical Target Encoding.
 6. **Model Training** (60%): Train Ridge and LightGBM models with walk-forward validation
-7. **Inference** (80%): Generate forecasts using ensemble of models
+7. **Inference & Routing** (80%): Evaluate WMAPE per segment and dynamically route to the best model (Naive, Ridge, or LGBM).
 8. **Finalization** (100%): Apply post-processing (zero-forecast gate, ROS blend)
 
 ## License

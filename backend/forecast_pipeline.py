@@ -22,6 +22,8 @@ class ForecastPipeline:
     def run(self, progress_callback: Optional[Callable] = None) -> list:
         """Run the complete forecasting pipeline."""
         self._progress = progress_callback
+        self._current_progress = 0.0
+        self._current_stage = "starting"
 
         # Stage 1: Load data (10%)
         self._update_progress(5, "loading_data", "Loading data files...")
@@ -63,8 +65,15 @@ class ForecastPipeline:
 
     def _update_progress(self, progress: float, stage: str, message: str):
         """Update progress."""
+        self._current_progress = progress
+        self._current_stage = stage
         if self._progress:
             self._progress(progress, stage, message)
+
+    def _log(self, message: str):
+        """Send a detailed log message without changing progress."""
+        if self._progress:
+            self._progress(self._current_progress, self._current_stage, message)
 
     def _aggregate_to_weekly(
         self, sales_df: pd.DataFrame, stock_df: pd.DataFrame
@@ -183,8 +192,11 @@ class ForecastPipeline:
         )
         df["rolling_cv_4"] = df["rolling_std_4"] / (df["rolling_mean_4"] + 1e-6)
 
-        # Feature 4: avg_rsp (price) - use constant for now
-        df["avg_rsp"] = 50.0  # Default constant
+        # Feature 4: avg_rsp (price)
+        prices = self.data_loader.get_price_by_sku().reset_index()
+        prices.columns = ["sku_id", "avg_rsp"]
+        df = df.merge(prices, on="sku_id", how="left")
+        df["avg_rsp"] = df["avg_rsp"].fillna(50.0)
 
         # Feature 5: season_to_date_qty (simplified - use year-to-date)
         df["year"] = df["week_start"].dt.year
@@ -211,22 +223,27 @@ class ForecastPipeline:
 
         # Merge n_stores
         df = df.merge(n_stores, on="sku_id", how="left")
+        
+        # Ensure discount_pct is present (fillna with 0 if missing)
+        if "discount_pct" not in df.columns:
+            df["discount_pct"] = 0.0
+        else:
+            df["discount_pct"] = df["discount_pct"].fillna(0.0)
 
         # Select feature columns
         feature_cols = [
             "combo_id", "store_id", "sku_id", "week_start", "qty_sold",
             "n_stores", "rolling_cv_4", "rolling_std_4", "avg_rsp",
             "season_to_date_qty", "qty_vs_rolling_mean", "pattern_type_std_cat",
-            "ewma_4", "qty_lag_3", "qty_lag_2", "demand_segment"
+            "ewma_4", "qty_lag_3", "qty_lag_2", "demand_segment", "discount_pct", "qty_lag1"
         ]
 
         return df[feature_cols].copy()
 
     def _train_models(self, features_df: pd.DataFrame) -> dict:
         """Train models with two-round walk-forward validation."""
-        # For demo, train simple models on last N weeks
         # Get unique combos
-        combos = features_df["combo_id"].unique()[:100]  # Limit for demo
+        combos = features_df["combo_id"].unique()
 
         model_outputs = {}
 
@@ -244,34 +261,43 @@ class ForecastPipeline:
             train_df = df[df["week_start"].isin(train_weeks)]
             val_df = df[df["week_start"].isin(val_weeks)]
 
-            feature_cols = [
-                "n_stores", "rolling_cv_4", "rolling_std_4", "avg_rsp",
-                "season_to_date_qty", "qty_vs_rolling_mean", "pattern_type_std_cat",
-                "ewma_4", "qty_lag_3", "qty_lag_2"
-            ]
-
             # Fill NaN
             train_df = train_df.fillna(0)
             val_df = val_df.fillna(0)
 
+            self._log("Applying Categorical Target Encoding to combo_id...")
+            # Calculate target encoding on training set ONLY to prevent data leakage
+            global_mean = train_df["qty_sold"].mean()
+            combo_target_map = train_df.groupby("combo_id")["qty_sold"].mean().to_dict()
+            
+            # Map encoding to both train and validation sets
+            train_df["combo_target_enc"] = train_df["combo_id"].map(combo_target_map).fillna(global_mean)
+            val_df["combo_target_enc"] = val_df["combo_id"].map(combo_target_map).fillna(global_mean)
+
+            feature_cols = [
+                "n_stores", "rolling_cv_4", "rolling_std_4", "avg_rsp",
+                "season_to_date_qty", "qty_vs_rolling_mean", "pattern_type_std_cat",
+                "ewma_4", "qty_lag_3", "qty_lag_2", "discount_pct", "combo_target_enc"
+            ]
+
+            self._log(f"Split data: {len(train_df)} train rows, {len(val_df)} validation rows.")
             X_train = train_df[feature_cols]
             y_train = train_df["qty_sold"]
             X_val = val_df[feature_cols]
             y_val = val_df["qty_sold"]
 
             # Train models
-            # 1. Seasonal Naive (just use last value)
-            seasonal_naive_preds = val_df.groupby("combo_id")["qty_sold"].shift(1).fillna(0)
-
-            # 2. Ridge
+            self._log("Training Ridge regression model (alpha=1.0, solver='lsqr')...")
             scaler = StandardScaler()
             X_train_scaled = scaler.fit_transform(X_train)
             X_val_scaled = scaler.transform(X_val)
-            ridge = Ridge(alpha=1.0)
+            ridge = Ridge(alpha=1.0, solver='lsqr')
             ridge.fit(X_train_scaled, y_train)
-            ridge_preds = ridge.predict(X_val_scaled)
+            ridge_preds = np.clip(ridge.predict(X_val_scaled), 0, None)
+            # handle any potential nans
+            ridge_preds = np.nan_to_num(ridge_preds, nan=0.0)
 
-            # 3. LightGBM
+            self._log("Training LightGBM regressor (n_estimators=200, max_depth=6)...")
             lgb_model = lgb.LGBMRegressor(
                 n_estimators=200,
                 max_depth=6,
@@ -279,18 +305,77 @@ class ForecastPipeline:
                 random_state=42
             )
             lgb_model.fit(X_train, y_train)
-            lgb_preds = lgb_model.predict(X_val)
+            lgb_preds = np.clip(lgb_model.predict(X_val), 0, None)
+
+            # Seasonal Naive baseline (last observed week's quantity)
+            seasonal_naive_preds = val_df["qty_lag1"].fillna(0).values
+
+            self._log("Evaluating and routing models by demand segment...")
+            val_df["ridge_preds"] = ridge_preds
+            val_df["lgb_preds"] = lgb_preds
+            val_df["seasonal_naive_preds"] = seasonal_naive_preds
+            
+            # Route models per segment
+            segments = val_df["demand_segment"].unique()
+            best_model_per_segment = {}
+            segment_wmapes = {}
+            
+            final_val_preds = np.zeros(len(val_df))
+            
+            for segment in segments:
+                mask = val_df["demand_segment"] == segment
+                y_true_seg = y_val[mask].values
+                sum_actuals = np.sum(np.abs(y_true_seg))
+                
+                if sum_actuals == 0:
+                    best_model_per_segment[segment] = "seasonal_naive"
+                    segment_wmapes[segment] = 0.0
+                    final_val_preds[mask] = val_df.loc[mask, "seasonal_naive_preds"].values
+                    continue
+                
+                # Evaluate the models for this segment
+                wmapes = {
+                    "seasonal_naive": np.sum(np.abs(y_true_seg - val_df.loc[mask, "seasonal_naive_preds"].values)) / sum_actuals,
+                    "ridge": np.sum(np.abs(y_true_seg - val_df.loc[mask, "ridge_preds"].values)) / sum_actuals,
+                    "lightgbm": np.sum(np.abs(y_true_seg - val_df.loc[mask, "lgb_preds"].values)) / sum_actuals
+                }
+                
+                # remove nans
+                wmapes = {k: (v if not np.isnan(v) else 1e9) for k, v in wmapes.items()}
+                
+                # Pick best model
+                best_model = min(wmapes, key=wmapes.get)
+                best_model_per_segment[segment] = best_model
+                segment_wmapes[segment] = wmapes[best_model]
+                
+                self._log(f"Segment '{segment}': WMAPEs -> Naive: {wmapes['seasonal_naive']:.2%}, Ridge: {wmapes['ridge']:.2%}, LGB: {wmapes['lightgbm']:.2%}")
+                self._log(f"Segment '{segment}': Best model is {best_model} (WMAPE: {wmapes[best_model]:.2%})")
+                
+                if best_model == "seasonal_naive":
+                    final_val_preds[mask] = val_df.loc[mask, "seasonal_naive_preds"].values
+                elif best_model == "ridge":
+                    final_val_preds[mask] = val_df.loc[mask, "ridge_preds"].values
+                else:
+                    final_val_preds[mask] = val_df.loc[mask, "lgb_preds"].values
+
+            # Calculate overall WMAPE
+            sum_all_actuals = np.sum(np.abs(y_val.values))
+            val_wmape = np.sum(np.abs(y_val.values - final_val_preds)) / sum_all_actuals if sum_all_actuals > 0 else 0.0
+
+            self._log(f"Overall Validation WMAPE calculated: {val_wmape:.2%}")
 
             # Store model outputs
             model_outputs = {
-                "seasonal_naive": seasonal_naive_preds.values,
-                "ridge": ridge_preds,
-                "lightgbm": lgb_preds,
-                "models": {"ridge": ridge, "scaler": scaler, "lgb": lgb_model},
+                "ridge": ridge,
+                "scaler": scaler,
+                "lgb": lgb_model,
+                "best_model_per_segment": best_model_per_segment,
                 "feature_cols": feature_cols,
                 "train_weeks": train_weeks,
                 "val_weeks": val_weeks,
-                "y_val": y_val.values,
+                "val_wmape": val_wmape,
+                "combo_target_map": combo_target_map,
+                "global_mean_target": global_mean,
             }
 
         return model_outputs
@@ -315,17 +400,38 @@ class ForecastPipeline:
 
         feature_cols = model_outputs.get("feature_cols", [])
         models = model_outputs.get("models", {})
+        
+        # Apply categorical target encoding from training set
+        combo_target_map = model_outputs.get("combo_target_map", {})
+        global_mean_target = model_outputs.get("global_mean_target", 0.0)
+        latest["combo_target_enc"] = latest["combo_id"].map(combo_target_map).fillna(global_mean_target)
 
         # Make predictions
         X_latest = latest[feature_cols]
 
-        ridge_preds = models.get("ridge").predict(
-            models.get("scaler").transform(X_latest)
-        )
-        lgb_preds = models.get("lgb").predict(X_latest)
+        ridge_preds = np.clip(model_outputs.get("ridge").predict(
+            model_outputs.get("scaler").transform(X_latest)
+        ), 0, None)
+        
+        lgb_preds = np.clip(model_outputs.get("lgb").predict(X_latest), 0, None)
 
-        # Simple ensemble: average of ridge and lgb
-        point_forecast = (ridge_preds + lgb_preds) / 2
+        best_model_per_segment = model_outputs.get("best_model_per_segment", {})
+
+        # Route point forecast based on segment
+        point_forecasts = np.zeros(len(latest))
+        model_used_list = []
+        
+        for idx, row in latest.iterrows():
+            segment = row["demand_segment"]
+            best_model = best_model_per_segment.get(segment, "lightgbm")
+            model_used_list.append(best_model)
+            
+            if best_model == "seasonal_naive":
+                point_forecasts[idx] = row["qty_sold"]  # Naive is the actual sales of the last known week
+            elif best_model == "ridge":
+                point_forecasts[idx] = ridge_preds[idx]
+            else:
+                point_forecasts[idx] = lgb_preds[idx]
 
         # Post-processing: zero-forecast gate
         # If stock was 0 for multiple weeks, set forecast to 0
@@ -337,7 +443,7 @@ class ForecastPipeline:
 
         # Build results
         results = []
-        latest["point_forecast"] = point_forecast
+        latest["point_forecast"] = point_forecasts
         
         for idx, row in latest.iterrows():
             combo_id = row["combo_id"]
@@ -369,9 +475,10 @@ class ForecastPipeline:
                 "point_forecast": final_forecast,
                 "lower_80": lower_80,
                 "upper_80": upper_80,
-                "model_used": "lightgbm_ridge_blend",
+                "model_used": model_used_list[idx],
                 "demand_segment": segment,
                 "is_zero_forecast": 1 if final_forecast == 0 else 0,
+                "wmape": model_outputs.get("val_wmape", 0.0),
             })
 
         return results
