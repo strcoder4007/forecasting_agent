@@ -5,6 +5,7 @@ import pandas as pd
 from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler
 import lightgbm as lgb
+import xgboost as xgb
 
 from .data_loader import DataLoader
 
@@ -18,6 +19,9 @@ class ForecastPipeline:
         self.stock_weekly: Optional[pd.DataFrame] = None
         self.combo_features: Optional[pd.DataFrame] = None
         self.results: list = []
+        self._progress = None
+        self._current_progress = 0.0
+        self._current_stage = "starting"
 
     def run(self, progress_callback: Optional[Callable] = None) -> list:
         """Run the complete forecasting pipeline."""
@@ -101,7 +105,37 @@ class ForecastPipeline:
             .reset_index()
         )
 
-        return sales_weekly, stock_weekly
+        # We must create a full Cartesian product of combo_id and week_start to ensure there are no missing weeks
+        # for lagging, rolling, and EWMA calculations.
+        self._log("Filling missing weeks with zero sales to complete time series...")
+        all_weeks = sorted(sales_weekly["week_start"].unique())
+        
+        # Add one future week for forecasting
+        future_week = all_weeks[-1] + pd.Timedelta(days=7)
+        all_weeks.append(future_week)
+
+        all_combos = sales_weekly[["combo_id", "store_id", "sku_id"]].drop_duplicates()
+        
+        # Create a complete grid using MultiIndex from product
+        full_grid = pd.MultiIndex.from_product(
+            [all_combos["combo_id"], all_weeks], names=["combo_id", "week_start"]
+        ).to_frame(index=False)
+        
+        # Merge back the store_id and sku_id to the full grid
+        full_grid = full_grid.merge(all_combos, on="combo_id", how="left")
+        
+        # Merge the actual sales into the grid
+        sales_weekly_filled = full_grid.merge(
+            sales_weekly[["combo_id", "week_start", "qty_sold", "discount_pct"]], 
+            on=["combo_id", "week_start"], 
+            how="left"
+        )
+        
+        # Fill missing values (future week will have 0 sales and 0 discount by default)
+        sales_weekly_filled["qty_sold"] = sales_weekly_filled["qty_sold"].fillna(0)
+        sales_weekly_filled["discount_pct"] = sales_weekly_filled["discount_pct"].fillna(0.0)
+
+        return sales_weekly_filled, stock_weekly
 
     def _apply_false_zero_correction(
         self, sales_weekly: pd.DataFrame, stock_weekly: pd.DataFrame
@@ -174,8 +208,12 @@ class ForecastPipeline:
         return sales_weekly
 
     def _compute_features(self, sales_weekly: pd.DataFrame) -> pd.DataFrame:
-        """Compute the 10 features per combo-week."""
+        """Compute the expanded features per combo-week."""
         df = sales_weekly.sort_values(["combo_id", "week_start"])
+
+        # Time features
+        df["month"] = df["week_start"].dt.month
+        df["weekofyear"] = df["week_start"].dt.isocalendar().week
 
         # Feature 1: n_stores - number of stores carrying this SKU
         n_stores = df.groupby("sku_id")["store_id"].nunique().reset_index()
@@ -192,6 +230,14 @@ class ForecastPipeline:
         )
         df["rolling_cv_4"] = df["rolling_std_4"] / (df["rolling_mean_4"] + 1e-6)
 
+        # 8-week rolling
+        df["rolling_mean_8"] = df.groupby("combo_id")["qty_lag1"].transform(
+            lambda x: x.rolling(8, min_periods=1).mean()
+        )
+        df["rolling_std_8"] = df.groupby("combo_id")["qty_lag1"].transform(
+            lambda x: x.rolling(8, min_periods=1).std()
+        )
+
         # Feature 4: avg_rsp (price)
         prices = self.data_loader.get_price_by_sku().reset_index()
         prices.columns = ["sku_id", "avg_rsp"]
@@ -204,6 +250,10 @@ class ForecastPipeline:
 
         # Feature 6: qty_vs_rolling_mean
         df["qty_vs_rolling_mean"] = df["qty_lag1"] / (df["rolling_mean_4"] + 1e-6)
+        
+        # Clip ratios to avoid exploding variance in linear models
+        df["rolling_cv_4"] = df["rolling_cv_4"].clip(upper=10.0)
+        df["qty_vs_rolling_mean"] = df["qty_vs_rolling_mean"].clip(upper=10.0)
 
         # Feature 7: pattern_type_std_cat (already computed in segmentation)
         # Already have demand_segment, encode as int
@@ -221,6 +271,9 @@ class ForecastPipeline:
         # Feature 10: qty_lag_2
         df["qty_lag_2"] = df.groupby("combo_id")["qty_sold"].shift(2)
 
+        # New: qty_lag_4
+        df["qty_lag_4"] = df.groupby("combo_id")["qty_sold"].shift(4)
+
         # Merge n_stores
         df = df.merge(n_stores, on="sku_id", how="left")
         
@@ -230,18 +283,29 @@ class ForecastPipeline:
         else:
             df["discount_pct"] = df["discount_pct"].fillna(0.0)
 
+        # Better Promotion Features
+        df["is_promotional"] = (df["discount_pct"] > 0).astype(int)
+        df["promo_depth"] = pd.cut(
+            df["discount_pct"],
+            bins=[-np.inf, 0, 0.1, 0.2, np.inf],
+            labels=[0, 1, 2, 3]
+        ).astype(int)
+        df["promo_lag1"] = df.groupby("combo_id")["is_promotional"].shift(1).fillna(0).astype(int)
+
         # Select feature columns
         feature_cols = [
             "combo_id", "store_id", "sku_id", "week_start", "qty_sold",
-            "n_stores", "rolling_cv_4", "rolling_std_4", "avg_rsp",
+            "n_stores", "rolling_cv_4", "rolling_std_4", "rolling_mean_8", "rolling_std_8", "avg_rsp",
             "season_to_date_qty", "qty_vs_rolling_mean", "pattern_type_std_cat",
-            "ewma_4", "qty_lag_3", "qty_lag_2", "demand_segment", "discount_pct", "qty_lag1"
+            "ewma_4", "qty_lag_4", "qty_lag_3", "qty_lag_2", "qty_lag1",
+            "month", "weekofyear", "demand_segment", "discount_pct",
+            "is_promotional", "promo_depth", "promo_lag1"
         ]
 
         return df[feature_cols].copy()
 
     def _train_models(self, features_df: pd.DataFrame) -> dict:
-        """Train models with two-round walk-forward validation."""
+        """Train models with walk-forward validation."""
         # Get unique combos
         combos = features_df["combo_id"].unique()
 
@@ -261,9 +325,9 @@ class ForecastPipeline:
             train_df = df[df["week_start"].isin(train_weeks)]
             val_df = df[df["week_start"].isin(val_weeks)]
 
-            # Fill NaN
-            train_df = train_df.fillna(0)
-            val_df = val_df.fillna(0)
+            # Fill NaN and Inf
+            train_df = train_df.replace([np.inf, -np.inf], 0).fillna(0)
+            val_df = val_df.replace([np.inf, -np.inf], 0).fillna(0)
 
             self._log("Applying Categorical Target Encoding to combo_id...")
             # Calculate target encoding on training set ONLY to prevent data leakage
@@ -275,37 +339,52 @@ class ForecastPipeline:
             val_df["combo_target_enc"] = val_df["combo_id"].map(combo_target_map).fillna(global_mean)
 
             feature_cols = [
-                "n_stores", "rolling_cv_4", "rolling_std_4", "avg_rsp",
+                "n_stores", "rolling_cv_4", "rolling_std_4", "rolling_mean_8", "rolling_std_8", "avg_rsp",
                 "season_to_date_qty", "qty_vs_rolling_mean", "pattern_type_std_cat",
-                "ewma_4", "qty_lag_3", "qty_lag_2", "discount_pct", "combo_target_enc"
+                "ewma_4", "qty_lag_4", "qty_lag_3", "qty_lag_2", "discount_pct", "combo_target_enc",
+                "is_promotional", "promo_depth", "promo_lag1"
             ]
 
             self._log(f"Split data: {len(train_df)} train rows, {len(val_df)} validation rows.")
-            X_train = train_df[feature_cols]
-            y_train = train_df["qty_sold"]
-            X_val = val_df[feature_cols]
-            y_val = val_df["qty_sold"]
+            X_train = train_df[feature_cols].astype(np.float64)
+            y_train = train_df["qty_sold"].astype(np.float64)
+            X_val = val_df[feature_cols].astype(np.float64)
+            y_val = val_df["qty_sold"].astype(np.float64)
 
             # Train models
-            self._log("Training Ridge regression model (alpha=1.0, solver='lsqr')...")
+            self._log("Training Ridge regression model (alpha=100.0, solver='svd')...")
             scaler = StandardScaler()
-            X_train_scaled = scaler.fit_transform(X_train)
-            X_val_scaled = scaler.transform(X_val)
-            ridge = Ridge(alpha=1.0, solver='lsqr')
+            X_train_scaled = np.nan_to_num(scaler.fit_transform(X_train))
+            X_val_scaled = np.nan_to_num(scaler.transform(X_val))
+            ridge = Ridge(alpha=100.0, solver='svd')
             ridge.fit(X_train_scaled, y_train)
             ridge_preds = np.clip(ridge.predict(X_val_scaled), 0, None)
             # handle any potential nans
             ridge_preds = np.nan_to_num(ridge_preds, nan=0.0)
 
-            self._log("Training LightGBM regressor (n_estimators=200, max_depth=6)...")
+            self._log("Training LightGBM regressor (n_estimators=150, learning_rate=0.05, objective='poisson')...")
             lgb_model = lgb.LGBMRegressor(
-                n_estimators=200,
-                max_depth=6,
+                n_estimators=150,
+                max_depth=5,
+                learning_rate=0.05,
+                objective="poisson",
                 verbose=-1,
                 random_state=42
             )
             lgb_model.fit(X_train, y_train)
             lgb_preds = np.clip(lgb_model.predict(X_val), 0, None)
+
+            self._log("Training XGBoost regressor (n_estimators=150, learning_rate=0.05, objective='count:poisson')...")
+            xgb_model = xgb.XGBRegressor(
+                n_estimators=150,
+                max_depth=5,
+                learning_rate=0.05,
+                objective="count:poisson",
+                random_state=42,
+                n_jobs=-1
+            )
+            xgb_model.fit(X_train, y_train)
+            xgb_preds = np.clip(xgb_model.predict(X_val), 0, None)
 
             # Seasonal Naive baseline (last observed week's quantity)
             seasonal_naive_preds = val_df["qty_lag1"].fillna(0).values
@@ -313,6 +392,7 @@ class ForecastPipeline:
             self._log("Evaluating and routing models by demand segment...")
             val_df["ridge_preds"] = ridge_preds
             val_df["lgb_preds"] = lgb_preds
+            val_df["xgb_preds"] = xgb_preds
             val_df["seasonal_naive_preds"] = seasonal_naive_preds
             
             # Route models per segment
@@ -337,7 +417,8 @@ class ForecastPipeline:
                 wmapes = {
                     "seasonal_naive": np.sum(np.abs(y_true_seg - val_df.loc[mask, "seasonal_naive_preds"].values)) / sum_actuals,
                     "ridge": np.sum(np.abs(y_true_seg - val_df.loc[mask, "ridge_preds"].values)) / sum_actuals,
-                    "lightgbm": np.sum(np.abs(y_true_seg - val_df.loc[mask, "lgb_preds"].values)) / sum_actuals
+                    "lightgbm": np.sum(np.abs(y_true_seg - val_df.loc[mask, "lgb_preds"].values)) / sum_actuals,
+                    "xgboost": np.sum(np.abs(y_true_seg - val_df.loc[mask, "xgb_preds"].values)) / sum_actuals
                 }
                 
                 # remove nans
@@ -348,13 +429,15 @@ class ForecastPipeline:
                 best_model_per_segment[segment] = best_model
                 segment_wmapes[segment] = wmapes[best_model]
                 
-                self._log(f"Segment '{segment}': WMAPEs -> Naive: {wmapes['seasonal_naive']:.2%}, Ridge: {wmapes['ridge']:.2%}, LGB: {wmapes['lightgbm']:.2%}")
+                self._log(f"Segment '{segment}': WMAPEs -> Naive: {wmapes['seasonal_naive']:.2%}, Ridge: {wmapes['ridge']:.2%}, LGB: {wmapes['lightgbm']:.2%}, XGB: {wmapes['xgboost']:.2%}")
                 self._log(f"Segment '{segment}': Best model is {best_model} (WMAPE: {wmapes[best_model]:.2%})")
                 
                 if best_model == "seasonal_naive":
                     final_val_preds[mask] = val_df.loc[mask, "seasonal_naive_preds"].values
                 elif best_model == "ridge":
                     final_val_preds[mask] = val_df.loc[mask, "ridge_preds"].values
+                elif best_model == "xgboost":
+                    final_val_preds[mask] = val_df.loc[mask, "xgb_preds"].values
                 else:
                     final_val_preds[mask] = val_df.loc[mask, "lgb_preds"].values
 
@@ -362,18 +445,27 @@ class ForecastPipeline:
             sum_all_actuals = np.sum(np.abs(y_val.values))
             val_wmape = np.sum(np.abs(y_val.values - final_val_preds)) / sum_all_actuals if sum_all_actuals > 0 else 0.0
 
-            self._log(f"Overall Validation WMAPE calculated: {val_wmape:.2%}")
+            # Calculate overall MAPE
+            nonzero_mask = y_val.values > 0
+            if np.any(nonzero_mask):
+                val_mape = np.mean(np.abs((y_val.values[nonzero_mask] - final_val_preds[nonzero_mask]) / y_val.values[nonzero_mask]))
+            else:
+                val_mape = 0.0
+
+            self._log(f"Overall Validation WMAPE calculated: {val_wmape:.2%}, MAPE: {val_mape:.2%}")
 
             # Store model outputs
             model_outputs = {
                 "ridge": ridge,
                 "scaler": scaler,
                 "lgb": lgb_model,
+                "xgb": xgb_model,
                 "best_model_per_segment": best_model_per_segment,
                 "feature_cols": feature_cols,
                 "train_weeks": train_weeks,
                 "val_weeks": val_weeks,
                 "val_wmape": val_wmape,
+                "val_mape": val_mape,
                 "combo_target_map": combo_target_map,
                 "global_mean_target": global_mean,
             }
@@ -389,7 +481,7 @@ class ForecastPipeline:
             return self._generate_sample_forecasts(features_df)
 
         df = features_df.copy()
-        df = df.fillna(0)
+        df = df.replace([np.inf, -np.inf], 0).fillna(0)
 
         # Get last week for each combo
         last_week = df.groupby("combo_id")["week_start"].max().reset_index()
@@ -410,10 +502,12 @@ class ForecastPipeline:
         X_latest = latest[feature_cols]
 
         ridge_preds = np.clip(model_outputs.get("ridge").predict(
-            model_outputs.get("scaler").transform(X_latest)
+            np.nan_to_num(model_outputs.get("scaler").transform(X_latest))
         ), 0, None)
         
         lgb_preds = np.clip(model_outputs.get("lgb").predict(X_latest), 0, None)
+        
+        xgb_preds = np.clip(model_outputs.get("xgb").predict(X_latest), 0, None)
 
         best_model_per_segment = model_outputs.get("best_model_per_segment", {})
 
@@ -430,6 +524,8 @@ class ForecastPipeline:
                 point_forecasts[idx] = row["qty_sold"]  # Naive is the actual sales of the last known week
             elif best_model == "ridge":
                 point_forecasts[idx] = ridge_preds[idx]
+            elif best_model == "xgboost":
+                point_forecasts[idx] = xgb_preds[idx]
             else:
                 point_forecasts[idx] = lgb_preds[idx]
 
