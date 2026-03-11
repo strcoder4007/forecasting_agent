@@ -10,28 +10,11 @@
           <h1 class="logo">Demand Forecasting</h1>
         </div>
         <nav class="nav">
-          <router-link to="/" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="7" height="9" rx="1"/>
-              <rect x="14" y="3" width="7" height="5" rx="1"/>
-              <rect x="14" y="12" width="7" height="9" rx="1"/>
-              <rect x="3" y="16" width="7" height="5" rx="1"/>
-            </svg>
-            Dashboard
-          </router-link>
           <router-link to="/run" class="nav-link">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="5 3 19 12 5 21 5 3"/>
             </svg>
             Run Forecast
-          </router-link>
-          <router-link to="/results" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="20" x2="18" y2="10"/>
-              <line x1="12" y1="20" x2="12" y2="4"/>
-              <line x1="6" y1="20" x2="6" y2="14"/>
-            </svg>
-            Results
           </router-link>
           <router-link to="/history" class="nav-link">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
