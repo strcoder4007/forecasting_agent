@@ -1,0 +1,219 @@
+
+==================================================
+Analyzing: SOH_MASTER.csv
+==================================================
+Rows: 38,289
+Columns: 12
+
+Missing Values:
+None
+
+Data Types:
+Location Type    object
+Store_Code       object
+Date             object
+Category         object
+Sub_Category     object
+Pattern          object
+Colour           object
+Size             object
+SKU              object
+Barcode           int64
+BOH               int64
+EOH               int64
+
+Summary Statistics:
+           count          mean           min           max
+Barcode  38289.0  1.100000e+10  1.100000e+10  1.100000e+10
+BOH      38289.0  4.725509e+00  1.000000e+00  3.100000e+01
+EOH      38289.0  3.713939e+00  0.000000e+00  3.000000e+01
+
+Categorical Column Unique Counts:
+  Location Type: 1 unique values
+    Values: ['Store']
+  Store_Code: 12 unique values
+  Date: 760 unique values
+  Category: 17 unique values
+  Sub_Category: 5 unique values
+    Values: ['Dresses & Jumpsuits', 'Bottomwear', 'Top', 'Outerwear', 'Co-Ords']
+  Pattern: 22 unique values
+  Colour: 88 unique values
+  Size: 12 unique values
+  SKU: 1053 unique values
+
+First 3 rows:
+  Location Type Store_Code      Date Category         Sub_Category  Pattern           Colour Size           SKU      Barcode  BOH  EOH
+0         Store       NY01  1/1/2024     Midi  Dresses & Jumpsuits  Printed       109 - Pink    M  NY_SKU_00107  11000000529    2    1
+1         Store       NY01  1/1/2024  Co-ords           Bottomwear    Solid  234 - Turquoise    L  NY_SKU_00482  11000000835    1    0
+2         Store       NY01  1/1/2024  Co-ords                  Top    Solid  234 - Turquoise    L  NY_SKU_00758  11000000867    4    3
+
+==================================================
+Analyzing: STORE_MASTER.csv
+==================================================
+Rows: 12
+Columns: 14
+
+Missing Values:
+COORDINATES    12
+
+Data Types:
+ID                int64
+STORE_CODE       object
+NAME             object
+ADDRESS          object
+ZIP CODE          int64
+CITY             object
+COUNTRY          object
+COORDINATES     float64
+IS WAREHOUSE       bool
+IS ACTIVE          bool
+OPENED ON        object
+CREATED AT       object
+UPDATED AT       object
+Size (sqft.)      int64
+
+Summary Statistics:
+              count          mean      min      max
+ID             12.0      6.500000      1.0     12.0
+ZIP CODE       12.0  10008.666667  10002.0  10018.0
+COORDINATES     0.0           NaN      NaN      NaN
+Size (sqft.)   12.0  10360.916667   8544.0  11900.0
+
+Categorical Column Unique Counts:
+  STORE_CODE: 12 unique values
+  NAME: 12 unique values
+  ADDRESS: 10 unique values
+  CITY: 1 unique values
+    Values: ['New York']
+  COUNTRY: 1 unique values
+    Values: ['USA']
+  OPENED ON: 10 unique values
+  CREATED AT: 1 unique values
+    Values: ['2026-03-08 11:33:53.911 +0530']
+  UPDATED AT: 1 unique values
+    Values: ['2026-03-08 11:33:53.911 +0530']
+
+First 3 rows:
+   ID STORE_CODE                  NAME                           ADDRESS  ZIP CODE      CITY COUNTRY  COORDINATES  IS WAREHOUSE  IS ACTIVE  OPENED ON                     CREATED AT                     UPDATED AT  Size (sqft.)
+0   1       NY01       Tangerine Tokio    201 Mulberry St, New York, NY      10012  New York     USA          NaN         False       True   1/1/2023  2026-03-08 11:33:53.911 +0530  2026-03-08 11:33:53.911 +0530          9886
+1   2       NY02       Sincerely Tommy  88 E 10th St Frnt, New York, NY      10003  New York     USA          NaN         False       True  1/31/2023  2026-03-08 11:33:53.911 +0530  2026-03-08 11:33:53.911 +0530         11655
+2   3       NY03  Stella Dallas Living       297 Grand St, New York, NY      10002  New York     USA          NaN         False       True   2/3/2023  2026-03-08 11:33:53.911 +0530  2026-03-08 11:33:53.911 +0530         10942
+
+==================================================
+Analyzing: SALES_MASTER.csv
+==================================================
+Rows: 38,289
+Columns: 22
+
+Missing Values:
+None
+
+Data Types:
+Store_Code             object
+Store_Name             object
+Sales_date             object
+Category               object
+Sub_Category           object
+SKU                    object
+Barcode                 int64
+Size                   object
+Pattern                object
+Colour                 object
+Quantity                int64
+COGS                   object
+Gross Selling Price    object
+Gross Sales            object
+Markdown               object
+Promotion type         object
+Net Sales              object
+year                    int64
+month                   int64
+day                     int64
+Currency               object
+Version                object
+
+Summary Statistics:
+            count          mean           min           max
+Barcode   38289.0  1.100000e+10  1.100000e+10  1.100000e+10
+Quantity  38289.0  1.004048e+00 -1.000000e+00  3.000000e+00
+year      38289.0  2.024585e+03  2.024000e+03  2.026000e+03
+month     38289.0  6.585860e+00  1.000000e+00  1.200000e+01
+day       38289.0  1.607725e+01  1.000000e+00  3.100000e+01
+
+Categorical Column Unique Counts:
+  Store_Code: 12 unique values
+  Store_Name: 12 unique values
+  Sales_date: 760 unique values
+  Category: 17 unique values
+  Sub_Category: 5 unique values
+    Values: ['Dresses & Jumpsuits', 'Bottomwear', 'Top', 'Outerwear', 'Co-Ords']
+  SKU: 1053 unique values
+  Size: 12 unique values
+  Pattern: 22 unique values
+  Colour: 88 unique values
+  COGS: 11 unique values
+  Gross Selling Price: 11 unique values
+  Gross Sales: 32 unique values
+  Markdown: 32 unique values
+  Promotion type: 6 unique values
+    Values: ['Big Billion Sale', 'New Arrival Offers', 'Mid Season Sale', 'Season End Sale ', 'Clearance Program ', 'No Promo']
+  Net Sales: 546 unique values
+  Currency: 1 unique values
+    Values: ['USD']
+  Version: 1 unique values
+    Values: ['New York']
+
+First 3 rows:
+  Store_Code       Store_Name Sales_date Category         Sub_Category           SKU      Barcode Size  Pattern           Colour  Quantity       COGS Gross Selling Price Gross Sales Markdown      Promotion type  Net Sales  year  month  day Currency   Version
+0       NY01  Tangerine Tokio   1/1/2024     Midi  Dresses & Jumpsuits  NY_SKU_00107  11000000529    M  Printed       109 - Pink         1  USD 14.00           USD 28.00   USD 28.00      18%    Big Billion Sale  USD 22.96  2024      1    1      USD  New York
+1       NY01  Tangerine Tokio   1/1/2024  Co-ords           Bottomwear  NY_SKU_00482  11000000835    L    Solid  234 - Turquoise         1   USD 5.00           USD 10.00   USD 10.00      23%  New Arrival Offers   USD 7.70  2024      1    1      USD  New York
+2       NY01  Tangerine Tokio   1/1/2024  Co-ords                  Top  NY_SKU_00758  11000000867    L    Solid  234 - Turquoise         1   USD 7.00           USD 14.00   USD 14.00      19%     Mid Season Sale  USD 11.34  2024      1    1      USD  New York
+
+==================================================
+Analyzing: ITEM_MASTER.csv
+==================================================
+Rows: 5,181
+Columns: 12
+
+Missing Values:
+None
+
+Data Types:
+Category               object
+Sub_Category           object
+Pattern                object
+Colour                 object
+Size                   object
+SKU                    object
+Barcode                 int64
+COGS                    int64
+Gross Selling Price     int64
+Launch Date            object
+UOM                    object
+Item type              object
+
+Summary Statistics:
+                      count          mean           min           max
+Barcode              5181.0  1.100000e+10  1.100000e+10  1.100000e+10
+COGS                 5181.0  9.938236e+00  5.000000e+00  1.500000e+01
+Gross Selling Price  5181.0  1.987647e+01  1.000000e+01  3.000000e+01
+
+Categorical Column Unique Counts:
+  Category: 17 unique values
+  Sub_Category: 5 unique values
+    Values: ['Co-Ords', 'Top', 'Bottomwear', 'Outerwear', 'Dresses & Jumpsuits']
+  Pattern: 22 unique values
+  Colour: 88 unique values
+  Size: 12 unique values
+  SKU: 1053 unique values
+  Launch Date: 762 unique values
+  UOM: 1 unique values
+    Values: ['pcs']
+  Item type : 1 unique values
+    Values: ['AIS']
+
+First 3 rows:
+         Category Sub_Category Pattern Colour Size           SKU      Barcode  COGS  Gross Selling Price Launch Date  UOM Item type 
+0  Blouses & Tops      Co-Ords   Plain  GREEN  1XS  NY_SKU_01079  11000004515    15                   30  12/10/2025  pcs        AIS
+1  Blouses & Tops      Co-Ords   Plain  GREEN   2S  NY_SKU_01079  11000004516    11                   22  12/22/2025  pcs        AIS
+2  Blouses & Tops      Co-Ords   Plain  GREEN   3M  NY_SKU_01079  11000004517    11                   22   12/9/2025  pcs        AIS
