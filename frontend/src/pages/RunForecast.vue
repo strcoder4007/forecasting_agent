@@ -285,7 +285,7 @@ export default {
 
 .chat-container {
   width: 100%;
-  max-width: 720px;
+  max-width: 960px;
   background: var(--color-bg-card);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
