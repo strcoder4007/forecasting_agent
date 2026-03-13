@@ -46,6 +46,7 @@
               <th>Status</th>
               <th>Combos</th>
               <th>Avg WMAPE</th>
+              <th>Avg MAPE</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -61,11 +62,12 @@
               </td>
               <td class="combos">{{ run.total_combos?.toLocaleString() || '-' }}</td>
               <td class="wmape">{{ formatWMAPE(run.avg_wmape) }}</td>
+              <td class="wmape">{{ formatWMAPE(run.avg_mape) }}</td>
               <td>
                 <div class="actions">
                   <router-link
                     v-if="run.status === 'completed'"
-                    :to="'/results/' + run.run_id"
+                    :to="'/run?id=' + run.run_id"
                     class="btn btn-secondary btn-sm"
                   >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
@@ -74,6 +76,13 @@
                     </svg>
                     View
                   </router-link>
+                  <button @click="deleteRun(run.run_id)" class="btn btn-danger btn-sm">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                    Delete
+                  </button>
                 </div>
               </td>
             </tr>
@@ -121,6 +130,16 @@ export default {
     formatWMAPE(wmape) {
       if (!wmape) return '-'
       return (wmape * 100).toFixed(2) + '%'
+    },
+    async deleteRun(runId) {
+      if (!confirm('Are you sure you want to delete this run?')) return
+      try {
+        await axios.delete(`/api/history/${runId}`)
+        await this.loadHistory()
+      } catch (e) {
+        console.error('Failed to delete run:', e)
+        alert('Failed to delete run')
+      }
     }
   }
 }
@@ -402,6 +421,15 @@ export default {
 .btn-primary:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
+}
+
+.btn-danger {
+  background: #FEE2E2;
+  color: #DC2626;
+}
+
+.btn-danger:hover {
+  background: #FCA5A5;
 }
 
 .btn-sm {

@@ -172,10 +172,6 @@ store_id, sku_id, combo_id, forecast_week_start, horizon, point_forecast, lower_
 
 ## 5. Technical Constraints
 
-- **LightGBM:** max 200 trees, depth 6
-- **Validation:** 2-round walk-forward only
-- **Features:** 10 fixed features (no dynamic feature selection)
-- **Models:** Seasonal Naive, Ridge, LightGBM, Croston only
 - **No neural models**
 
 ---

@@ -63,6 +63,7 @@ class HistoryItem(BaseModel):
     status: str
     total_combos: int
     avg_wmape: float
+    avg_mape: float
 
 
 class HistoryResponse(BaseModel):
@@ -102,6 +103,7 @@ async def run_forecast():
             "message": "Initializing forecast run",
             "total_combos": 0,
             "avg_wmape": 0.0,
+            "avg_mape": 0.0,
             "results": None,
             "error": None,
             "logs": [],
@@ -135,8 +137,12 @@ async def run_forecast():
                 runs_storage[run_id]["total_combos"] = len(results)
                 if results:
                     wmape_values = [r.get("wmape", 0) for r in results if "wmape" in r]
+                    mape_values = [r.get("mape", 0) for r in results if "mape" in r]
                     runs_storage[run_id]["avg_wmape"] = (
                         sum(wmape_values) / len(wmape_values) if wmape_values else 0
+                    )
+                    runs_storage[run_id]["avg_mape"] = (
+                        sum(mape_values) / len(mape_values) if mape_values else 0
                     )
 
         except DataLoadError as e:
@@ -219,6 +225,7 @@ async def get_history():
                 status=r["status"],
                 total_combos=r.get("total_combos", 0),
                 avg_wmape=r.get("avg_wmape", 0.0),
+                avg_mape=r.get("avg_mape", 0.0),
             )
             for r in runs_storage.values()
         ]
@@ -243,6 +250,7 @@ async def get_history_item(run_id: str):
             "message": run["message"],
             "total_combos": run.get("total_combos", 0),
             "avg_wmape": run.get("avg_wmape", 0.0),
+            "avg_mape": run.get("avg_mape", 0.0),
             "error": run.get("error"),
         }
 

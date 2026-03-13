@@ -285,6 +285,12 @@ export default {
       return this.results[0].model_used?.replace('_blend', '') || '-'
     }
   },
+  async mounted() {
+    if (this.$route.query.id) {
+      this.currentRunId = this.$route.query.id;
+      await this.loadResults();
+    }
+  },
   beforeUnmount() {
     if (this.pollInterval) {
       clearInterval(this.pollInterval)

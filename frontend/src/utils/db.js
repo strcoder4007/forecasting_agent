@@ -23,7 +23,11 @@ export async function saveResults(runId, data) {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
-    const request = store.put(data, runId);
+    
+    // Strip Proxies or other non-cloneable Vue wrappers
+    const plainData = JSON.parse(JSON.stringify(data));
+    
+    const request = store.put(plainData, runId);
 
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
