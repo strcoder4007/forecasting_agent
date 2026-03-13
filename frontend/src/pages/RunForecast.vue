@@ -572,7 +572,7 @@ export default {
   align-self: flex-start;
 }
 
-.avatar {
+.message .avatar {
   width: 28px;
   height: 28px;
   background: var(--color-primary);
@@ -583,6 +583,10 @@ export default {
   justify-content: center;
   flex-shrink: 0;
   margin-top: 2px;
+}
+
+.message.system .avatar {
+  background: #6B7280;
 }
 
 .avatar.loading {
@@ -629,7 +633,48 @@ export default {
 
 .system .message-content {
   background: var(--color-bg);
-  font-size: 13px;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid #6B7280;
+  padding: 14px 16px;
+}
+
+.system .message-content .system-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6B7280;
+  margin-bottom: 8px;
+}
+
+.system .message-content .system-badge svg {
+  width: 12px;
+  height: 12px;
+}
+
+.system .message-content .system-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.system .message-content .system-info .run-id {
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  color: var(--color-primary);
+  background: rgba(124, 58, 237, 0.1);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.system .message-content .system-info .status-text {
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 
 .text :deep(p) {
@@ -664,30 +709,32 @@ export default {
 
 /* Progress */
 .progress {
-  min-width: 240px;
+  min-width: 280px;
 }
 
 .progress-header {
   display: flex;
   justify-content: space-between;
-  font-size: 13px;
-  margin-bottom: 8px;
+  align-items: center;
+  margin-bottom: 12px;
 }
 
 .progress-stage {
-  font-weight: 500;
+  font-weight: 600;
   color: var(--color-text);
+  font-size: 14px;
 }
 
 .progress-pct {
   color: var(--color-primary);
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 14px;
 }
 
 .progress-bar {
-  height: 6px;
+  height: 8px;
   background: var(--color-border);
-  border-radius: 3px;
+  border-radius: 4px;
   overflow: hidden;
 }
 
@@ -704,14 +751,36 @@ export default {
 .progress-msg {
   font-size: 12px;
   color: var(--color-text-muted);
-  margin-top: 6px;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.progress-msg::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: #9CA3AF;
+  border-radius: 50%;
 }
 
 .progress-done {
-  margin-top: 10px;
-  color: #10B981;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 8px;
+  color: #059669;
   font-size: 13px;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-done svg {
+  flex-shrink: 0;
 }
 
 /* Input */
