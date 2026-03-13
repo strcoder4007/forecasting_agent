@@ -1,241 +1,99 @@
 <template>
-  <div class="run-forecast">
-    <div class="page-header">
-      <h2 class="page-title">Run Forecast</h2>
-      <p class="page-subtitle">Execute the demand forecasting pipeline</p>
-    </div>
+  <div class="chat-page">
+    <div class="chat-container">
+      <div class="chat-header">
+        <div class="chat-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+            <path d="M12 2a10 10 0 1 0 10 10H12V2z"></path>
+            <path d="M12 12 2.1 12"></path>
+            <path d="M12 12 19 4.9"></path>
+          </svg>
+          <span>Forecasting Agent</span>
+        </div>
+        <div v-if="currentRunId" class="run-badge">
+          <span class="run-dot"></span>
+          Run {{ currentRunId.substring(0, 6) }}
+          <button @click="clearRunContext" class="clear-btn" title="Clear context">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
 
-    <div class="grid-layout">
-      <!-- Main Card -->
-      <div class="card main-card">
-        <div class="card-header">
-          <div class="card-title-section">
-            <div class="card-icon-wrapper">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-              </svg>
-            </div>
-            <div>
-              <h3 class="card-title">Start New Forecast</h3>
-              <p class="card-description">Run demand forecasting for all SKU-store combinations</p>
-            </div>
+      <div class="chat-messages" ref="chatHistory">
+        <div v-if="messages.length === 0" class="welcome-state">
+          <div class="welcome-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32">
+              <path d="M3 3v18h18"></path>
+              <path d="M18 9l-5 5-4-4-3 3"></path>
+            </svg>
+          </div>
+          <h2>How can I help you forecast?</h2>
+          <p>Ask me to run a demand forecast or answer questions about your data.</p>
+          <div class="quick-actions">
+            <button @click="sendQuick('Run a new forecast for me')">Run forecast</button>
+            <button @click="sendQuick('What is the forecasted demand for next week?')">Demand query</button>
+            <button @click="sendQuick('Which products are at risk of stockout?')">Stockout risks</button>
           </div>
         </div>
 
-        <!-- Results Section (shown after completion) -->
-        <div v-if="showResults" class="results-section">
-          <div class="results-header">
-            <h3 class="results-title">Forecast Results</h3>
-            <div class="results-actions">
-              <button @click="exportCSV" class="btn btn-secondary btn-sm" :disabled="!results.length">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="7 10 12 15 17 10"/>
-                  <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                Export CSV
-              </button>
-              <button @click="startNewForecast" class="btn btn-primary btn-sm">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                  <polygon points="5 3 19 12 5 21 5 3"/>
-                </svg>
-                New Forecast
-              </button>
-            </div>
+        <div 
+          v-for="(msg, idx) in messages" 
+          :key="idx"
+          class="message"
+          :class="msg.role"
+        >
+          <div v-if="msg.role === 'ai' || msg.role === 'system'" class="avatar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M12 16v-4"></path>
+              <path d="M12 8h.01"></path>
+            </svg>
           </div>
-
-          <!-- Stats -->
-          <div v-if="results.length" class="stats-grid">
-            <div class="stat-card">
-              <div class="stat-label">Total Combos</div>
-              <div class="stat-value">{{ results.length.toLocaleString() }}</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Zero Forecasts</div>
-              <div class="stat-value">{{ zeroForecasts.toLocaleString() }}</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Avg Forecast</div>
-              <div class="stat-value">{{ avgForecast }}</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Model</div>
-              <div class="stat-value model">{{ modelUsed }}</div>
-            </div>
-          </div>
-
-          <!-- Table -->
-          <div v-if="results.length" class="table-container">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Store</th>
-                  <th>SKU</th>
-                  <th>Forecast</th>
-                  <th>Lower 80%</th>
-                  <th>Upper 80%</th>
-                  <th>Segment</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(row, idx) in paginatedResults" :key="idx">
-                  <td class="store-id">{{ row.store_id }}</td>
-                  <td class="sku" :title="row.sku_id">{{ truncate(row.sku_id, 25) }}</td>
-                  <td class="forecast">{{ row.point_forecast }}</td>
-                  <td class="ci">{{ row.lower_80 }}</td>
-                  <td class="ci">{{ row.upper_80 }}</td>
-                  <td>
-                    <span class="segment-badge" :class="row.demand_segment">
-                      {{ row.demand_segment }}
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-
-            <!-- Pagination -->
-            <div class="pagination">
-              <button @click="page--" :disabled="page === 0" class="btn btn-secondary btn-sm">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                  <polyline points="15 18 9 12 15 6"/>
-                </svg>
-                Previous
-              </button>
-              <span class="page-info">{{ page + 1 }} of {{ totalPages }}</span>
-              <button @click="page++" :disabled="page >= totalPages - 1" class="btn btn-secondary btn-sm">
-                Next
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Forecast Run Section -->
-        <div v-else>
-          <div v-if="!running" class="action-area">
-            <button @click="startForecast" class="btn btn-primary btn-lg">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-                <polygon points="5 3 19 12 5 21 5 3"/>
-              </svg>
-              Start Forecast
-            </button>
-            <p class="action-note">This will process ~48,000 store-SKU combinations</p>
-          </div>
-
-          <!-- Running State -->
-          <div v-else class="running-area">
-            <div class="progress-card">
+          
+          <div class="message-content">
+            <div v-if="msg.type === 'text'" class="text" v-html="formatMessage(msg.content)"></div>
+            
+            <div v-if="msg.type === 'progress'" class="progress">
               <div class="progress-header">
-                <span class="progress-label">Progress</span>
-                <span class="progress-value">{{ progress }}%</span>
+                <span class="progress-stage">{{ msg.content.stageTitle }}</span>
+                <span class="progress-pct">{{ Math.round(msg.content.progress) }}%</span>
               </div>
               <div class="progress-bar">
-                <div class="progress-fill" :style="{ width: progress + '%' }">
-                  <div class="progress-glow"></div>
-                </div>
+                <div class="progress-fill" :style="{ width: msg.content.progress + '%' }" :class="{ error: msg.content.error }"></div>
+              </div>
+              <div class="progress-msg">{{ msg.content.message }}</div>
+              
+              <div v-if="msg.content.status === 'completed'" class="progress-done">
+                Forecast complete. Ask me anything about the results.
               </div>
             </div>
-
-            <div class="stage-card">
-              <div class="stage-item">
-                <span class="stage-label">Current Stage</span>
-                <span class="stage-value">{{ formatStage(stage) }}</span>
-              </div>
-              <div class="stage-item">
-                <span class="stage-label">Status</span>
-                <span class="stage-status running">
-                  <span class="status-pulse"></span>
-                  Processing...
-                </span>
-              </div>
-            </div>
-
-            <div class="logs-card">
-              <div class="logs-header">Execution Logs</div>
-              <div class="logs-container" ref="logsContainer">
-                <div v-if="logs.length === 0" class="log-line empty">Waiting for logs...</div>
-                <div v-for="(log, idx) in logs" :key="idx" class="log-line">
-                  <span class="log-text">{{ log }}</span>
-                </div>
-              </div>
-            </div>
-
-            <button @click="checkStatus" class="btn btn-secondary">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-                <polyline points="23 4 23 10 17 10"/>
-                <polyline points="1 20 1 14 7 14"/>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-              </svg>
-              Refresh Status
-            </button>
           </div>
+        </div>
 
-          <!-- Error -->
-          <div v-if="error" class="error-card">
-            <svg class="error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="15" y1="9" x2="9" y2="15"/>
-              <line x1="9" y1="9" x2="15" y2="15"/>
-            </svg>
-            <div class="error-content">
-              <span class="error-title">Forecast Failed</span>
-              <span class="error-message">{{ error }}</span>
-            </div>
+        <div v-if="loading" class="message ai">
+          <div class="avatar loading">
+            <span></span><span></span><span></span>
           </div>
         </div>
       </div>
 
-      <!-- Sidebar -->
-      <div class="sidebar">
-        <!-- Current Run -->
-        <div v-if="currentRunId && !showResults" class="card current-run">
-          <h3 class="card-title-sm">Current Run</h3>
-          <div class="run-id-badge">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <polyline points="12 6 12 12 16 14"/>
-            </svg>
-            {{ currentRunId.substring(0, 8) }}
-          </div>
-        </div>
-
-        <!-- Info Card -->
-        <div class="card info-card">
-          <h3 class="card-title-sm">Pipeline Details</h3>
-          <div class="info-list">
-            <div class="info-item">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                <line x1="3" y1="9" x2="21" y2="9"/>
-                <line x1="9" y1="21" x2="9" y2="9"/>
-              </svg>
-              <span>48,000 combos</span>
-            </div>
-            <div class="info-item">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="20" x2="12" y2="10"/>
-                <line x1="18" y1="20" x2="18" y2="4"/>
-                <line x1="6" y1="20" x2="6" y2="16"/>
-              </svg>
-              <span>LightGBM + Ridge</span>
-            </div>
-            <div class="info-item">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-              </svg>
-              <span>Weekly aggregation</span>
-            </div>
-            <div class="info-item">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-              </svg>
-              <span>False-zero correction</span>
-            </div>
-          </div>
-        </div>
+      <div class="input-area">
+        <input 
+          v-model="query" 
+          @keyup.enter="sendMessage"
+          type="text" 
+          placeholder="Ask something or run a forecast..." 
+          :disabled="loading || forecasting"
+        />
+        <button @click="sendMessage" :disabled="!query.trim() || loading || forecasting" class="send-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
       </div>
     </div>
   </div>
@@ -243,113 +101,142 @@
 
 <script>
 import axios from 'axios'
+import { marked } from 'marked'
 import { saveResults, getResults } from '../utils/db'
 
 export default {
   name: 'RunForecast',
   data() {
     return {
-      running: false,
+      query: '',
+      messages: [],
+      loading: false,
+      forecasting: false,
       currentRunId: null,
-      progress: 0,
-      stage: '',
-      message: '',
-      error: null,
-      pollInterval: null,
-      logs: [],
-      // Results data
-      showResults: false,
-      results: [],
-      page: 0,
-      pageSize: 25
-    }
-  },
-  computed: {
-    paginatedResults() {
-      const start = this.page * this.pageSize
-      return this.results.slice(start, start + this.pageSize)
-    },
-    totalPages() {
-      return Math.ceil(this.results.length / this.pageSize)
-    },
-    zeroForecasts() {
-      return this.results.filter(r => r.is_zero_forecast === 1).length
-    },
-    avgForecast() {
-      if (!this.results.length) return 0
-      const total = this.results.reduce((sum, r) => sum + r.point_forecast, 0)
-      return Math.round(total / this.results.length)
-    },
-    modelUsed() {
-      if (!this.results.length) return '-'
-      return this.results[0].model_used?.replace('_blend', '') || '-'
+      pollInterval: null
     }
   },
   async mounted() {
     if (this.$route.query.id) {
       this.currentRunId = this.$route.query.id;
-      await this.loadResults();
+      this.messages.push({
+        role: 'system',
+        type: 'text',
+        content: `**Context Loaded:** Loaded run \`${this.currentRunId.substring(0, 6)}\`. Ask me about this forecast.`
+      })
+      await this.loadResultsIfMissing()
     }
   },
   beforeUnmount() {
-    if (this.pollInterval) {
-      clearInterval(this.pollInterval)
-    }
+    if (this.pollInterval) clearInterval(this.pollInterval)
   },
   methods: {
+    formatMessage(text) {
+      return marked(text)
+    },
+    sendQuick(text) {
+      this.query = text
+      this.sendMessage()
+    },
+    clearRunContext() {
+      this.currentRunId = null;
+      this.messages.push({
+        role: 'system',
+        type: 'text',
+        content: `*Context cleared.*`
+      })
+      if (this.$route.query.id) {
+        this.$router.replace({ query: {} })
+      }
+    },
+    async sendMessage() {
+      if (!this.query.trim() || this.loading || this.forecasting) return
+
+      const userText = this.query.trim()
+      this.query = ''
+      
+      this.messages.push({ role: 'user', type: 'text', content: userText })
+      this.loading = true
+      this.scrollToBottom()
+
+      try {
+        const payload = { query: userText }
+        if (this.currentRunId) {
+          payload.run_id = this.currentRunId
+        }
+        
+        const res = await axios.post(`/api/chat`, payload)
+        
+        if (res.data.action === 'START_FORECAST') {
+          this.messages.push({ role: 'ai', type: 'text', content: res.data.response })
+          await this.startForecast()
+        } else {
+          this.messages.push({ role: 'ai', type: 'text', content: res.data.response })
+        }
+      } catch (e) {
+        this.messages.push({ role: 'ai', type: 'text', content: `**Error:** ${e.response?.data?.detail || e.message}` })
+      } finally {
+        this.loading = false
+        this.scrollToBottom()
+      }
+    },
     async startForecast() {
-      this.error = null
-      this.showResults = false
-      this.results = []
-      this.page = 0
+      this.forecasting = true
       try {
         const res = await axios.post('/api/forecast/run')
         this.currentRunId = res.data.run_id
-        this.running = true
-        this.progress = 0
-        this.stage = 'starting'
-        this.message = 'Forecast started...'
-        this.logs = []
+        
+        const progMsgIndex = this.messages.length
+        this.messages.push({
+          role: 'system',
+          type: 'progress',
+          content: {
+            progress: 0,
+            stageTitle: 'Starting',
+            message: 'Initializing forecast...',
+            status: 'running',
+            error: null
+          }
+        })
+        
+        this.pollInterval = setInterval(() => this.checkForecastStatus(progMsgIndex), 1500)
+        this.$router.replace({ query: { id: this.currentRunId } })
 
-        this.pollInterval = setInterval(() => this.checkStatus(), 2000)
       } catch (e) {
-        this.error = e.response?.data?.detail || e.message
+        this.messages.push({ role: 'system', type: 'text', content: `**Failed to start forecast:** ${e.response?.data?.detail || e.message}` })
+        this.forecasting = false
       }
     },
-    async checkStatus() {
+    async checkForecastStatus(msgIndex) {
       if (!this.currentRunId) return
-
       try {
         const res = await axios.get(`/api/forecast/status/${this.currentRunId}`)
         const data = res.data
-
-        this.progress = data.progress
-        this.stage = data.stage
-        this.message = data.message
-        this.logs = data.logs || []
         
-        this.$nextTick(() => {
-          if (this.$refs.logsContainer) {
-            this.$refs.logsContainer.scrollTop = this.$refs.logsContainer.scrollHeight
-          }
-        })
+        const msg = this.messages[msgIndex]
+        msg.content.progress = data.progress
+        msg.content.stageTitle = this.formatStage(data.stage)
+        msg.content.message = data.message
+        msg.content.status = data.status
+
+        this.scrollToBottom()
 
         if (data.status === 'completed') {
-          this.running = false
+          this.forecasting = false
           clearInterval(this.pollInterval)
-          await this.loadResults()
+          await this.loadResultsIfMissing()
         } else if (data.status === 'failed') {
-          this.running = false
-          this.error = data.message
+          this.forecasting = false
           clearInterval(this.pollInterval)
+          msg.content.error = data.message
+          this.messages.push({ role: 'system', type: 'text', content: `**Forecast Failed:** ${data.message}` })
         }
       } catch (e) {
-        console.error(e)
+        console.error("Status polling error:", e)
       }
     },
-    async loadResults() {
+    async loadResultsIfMissing() {
       if (!this.currentRunId) return
-      
       try {
         let rows = await getResults(this.currentRunId)
         if (!rows || rows.length === 0) {
@@ -359,45 +246,9 @@ export default {
             await saveResults(this.currentRunId, rows)
           }
         }
-        this.results = rows || []
-        this.showResults = true
-        this.page = 0
       } catch (e) {
-        console.error('Failed to load results:', e)
-        this.error = 'Forecast completed but failed to load results'
+        console.error('Failed to cache results:', e)
       }
-    },
-    startNewForecast() {
-      this.showResults = false
-      this.results = []
-      this.currentRunId = null
-      this.page = 0
-    },
-    async exportCSV() {
-      if (!this.results || !this.results.length) return
-      
-      const keys = Object.keys(this.results[0])
-      let csvContent = keys.join(',') + '\n'
-      
-      this.results.forEach(row => {
-        csvContent += keys.map(k => {
-          let val = row[k] === null || row[k] === undefined ? '' : row[k]
-          if (typeof val === 'string' && val.includes(',')) {
-            val = `"${val}"`
-          }
-          return val
-        }).join(',') + '\n'
-      })
-      
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const link = document.createElement('a')
-      const url = URL.createObjectURL(blob)
-      link.setAttribute('href', url)
-      link.setAttribute('download', `forecast_${this.currentRunId}.csv`)
-      link.style.visibility = 'hidden'
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
     },
     formatStage(stage) {
       const stageMap = {
@@ -406,605 +257,390 @@ export default {
         'aggregating': 'Aggregating',
         'correcting': 'Correcting',
         'segmenting': 'Segmenting',
-        'features': 'Engineering Features',
-        'training': 'Training Models',
-        'predicting': 'Generating Forecasts',
+        'features': 'Features',
+        'training': 'Training',
+        'predicting': 'Predicting',
         'done': 'Complete'
       }
       return stageMap[stage] || stage
     },
-    truncate(str, len) {
-      if (!str) return ''
-      return str.length > len ? str.substring(0, len) + '...' : str
+    scrollToBottom() {
+      this.$nextTick(() => {
+        const el = this.$refs.chatHistory
+        if (el) {
+          el.scrollTop = el.scrollHeight
+        }
+      })
     }
   }
 }
 </script>
 
 <style scoped>
-.run-forecast {
+.chat-page {
+  height: calc(100vh - 120px);
   display: flex;
-  flex-direction: column;
-  gap: 24px;
+  justify-content: center;
 }
 
-.page-header {
+.chat-container {
+  width: 100%;
+  max-width: 720px;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+}
+
+.chat-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--color-text);
+}
+
+.chat-title svg {
+  color: var(--color-primary);
+}
+
+.run-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+  padding: 5px 12px;
+  border-radius: 20px;
+}
+
+.run-dot {
+  width: 6px;
+  height: 6px;
+  background: #10B981;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.clear-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: var(--transition);
+}
+
+.clear-btn:hover {
+  color: var(--color-text);
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.chat-messages {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background: var(--color-bg);
+}
+
+/* Welcome State */
+.welcome-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.welcome-icon {
+  width: 64px;
+  height: 64px;
+  background: rgba(124, 58, 237, 0.08);
+  color: var(--color-primary);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.welcome-state h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text);
   margin-bottom: 8px;
 }
 
-.page-title {
-  font-family: 'Fira Code', monospace;
-  font-size: 28px;
-  font-weight: 700;
-  color: #1E3A8A;
-  margin-bottom: 4px;
-}
-
-.page-subtitle {
+.welcome-state p {
   font-size: 14px;
-  color: #64748B;
+  color: var(--color-text-muted);
+  max-width: 320px;
 }
 
-/* Grid */
-.grid-layout {
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 24px;
-}
-
-/* Main Card */
-.main-card {
-  padding: 0;
-}
-
-.card-header {
-  padding: 24px;
-  border-bottom: 1px solid #F1F5F9;
-}
-
-.card-title-section {
+.quick-actions {
   display: flex;
-  align-items: flex-start;
-  gap: 16px;
+  gap: 10px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
-.card-icon-wrapper {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%);
+.quick-actions button {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  padding: 10px 16px;
+  border-radius: 24px;
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.quick-actions button:hover {
+  border-color: var(--color-primary-light);
+  background: rgba(124, 58, 237, 0.04);
+  transform: translateY(-1px);
+}
+
+/* Messages */
+.message {
+  display: flex;
+  gap: 12px;
+  max-width: 90%;
+}
+
+.message.user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.message.ai, 
+.message.system {
+  align-self: flex-start;
+}
+
+.avatar {
+  width: 28px;
+  height: 28px;
+  background: var(--color-primary);
+  color: white;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  margin-top: 2px;
 }
 
-.card-icon-wrapper svg {
-  width: 24px;
-  height: 24px;
-  color: #FFFFFF;
+.avatar.loading {
+  background: transparent;
+  gap: 4px;
 }
 
-.card-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1E3A8A;
-  margin-bottom: 4px;
+.avatar.loading span {
+  width: 6px;
+  height: 6px;
+  background: var(--color-primary-light);
+  border-radius: 50%;
+  animation: bounce 1.4s infinite ease-in-out both;
 }
 
-.card-description {
+.avatar.loading span:nth-child(1) { animation-delay: -0.32s; }
+.avatar.loading span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1); }
+}
+
+.message-content {
+  padding: 12px 16px;
+  border-radius: 16px;
   font-size: 14px;
-  color: #64748B;
+  line-height: 1.6;
 }
 
-/* Action Area */
-.action-area {
-  padding: 32px 24px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
+.user .message-content {
+  background: var(--color-primary);
+  color: white;
+  border-bottom-right-radius: 4px;
 }
 
-.action-note {
+.ai .message-content,
+.system .message-content {
+  background: var(--color-bg-card);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-bottom-left-radius: 4px;
+}
+
+.system .message-content {
+  background: var(--color-bg);
   font-size: 13px;
-  color: #94A3B8;
 }
 
-/* Running Area */
-.running-area {
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+.text :deep(p) {
+  margin: 0 0 10px 0;
+}
+.text :deep(p:last-child) {
+  margin: 0;
+}
+.text :deep(ul), .text :deep(ol) {
+  margin: 10px 0;
+  padding-left: 20px;
+}
+.text :deep(li) {
+  margin: 4px 0;
+}
+.text :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 13px;
+}
+.text :deep(th), .text :deep(td) {
+  border: 1px solid var(--color-border);
+  padding: 8px 10px;
+  text-align: left;
+}
+.text :deep(th) {
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  font-weight: 500;
 }
 
-.progress-card {
-  background: #F8FAFC;
-  border-radius: 12px;
-  padding: 16px;
+/* Progress */
+.progress {
+  min-width: 240px;
 }
 
 .progress-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.progress-label {
   font-size: 13px;
-  color: #64748B;
-  font-weight: 500;
+  margin-bottom: 8px;
 }
 
-.progress-value {
-  font-family: 'Fira Code', monospace;
-  font-size: 18px;
-  font-weight: 700;
-  color: #3B82F6;
+.progress-stage {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.progress-pct {
+  color: var(--color-primary);
+  font-weight: 600;
 }
 
 .progress-bar {
-  height: 8px;
-  background: #E2E8F0;
-  border-radius: 4px;
+  height: 6px;
+  background: var(--color-border);
+  border-radius: 3px;
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #3B82F6 0%, #1E40AF 100%);
-  border-radius: 4px;
+  background: var(--color-primary);
   transition: width 0.3s ease;
-  position: relative;
 }
 
-.progress-glow {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 40px;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3));
-  animation: glow 1.5s ease-in-out infinite;
+.progress-fill.error {
+  background: #EF4444;
 }
 
-@keyframes glow {
-  0%, 100% { opacity: 0; }
-  50% { opacity: 1; }
-}
-
-.stage-card {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.stage-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.stage-label {
+.progress-msg {
   font-size: 12px;
-  color: #64748B;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: var(--color-text-muted);
+  margin-top: 6px;
 }
 
-.stage-value {
+.progress-done {
+  margin-top: 10px;
+  color: #10B981;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Input */
+.input-area {
+  padding: 16px 20px;
+  background: var(--color-bg-card);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  gap: 12px;
+}
+
+.input-area input {
+  flex: 1;
+  padding: 14px 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 28px;
+  outline: none;
   font-size: 14px;
-  font-weight: 600;
-  color: #1E3A8A;
+  font-family: inherit;
+  transition: var(--transition);
+  background: var(--color-bg);
 }
 
-.stage-status {
+.input-area input:focus {
+  border-color: var(--color-primary);
+  background: var(--color-bg-card);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.08);
+}
+
+.input-area input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.send-btn {
+  width: 44px;
+  height: 44px;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 50%;
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #D97706;
-}
-
-.status-pulse {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #D97706;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.9); }
-}
-
-/* Error */
-.error-card {
-  margin: 0 24px 24px;
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 16px;
-  background: #FEE2E2;
-  border: 1px solid #FECACA;
-  border-radius: 12px;
-}
-
-.error-icon {
-  width: 24px;
-  height: 24px;
-  color: #DC2626;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition);
   flex-shrink: 0;
 }
 
-.error-content {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.send-btn:hover:not(:disabled) {
+  background: #6D28D9;
+  transform: scale(1.05);
 }
 
-.error-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #991B1B;
-}
-
-.error-message {
-  font-size: 13px;
-  color: #B91C1C;
-}
-
-/* Sidebar */
-.sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.card {
-  background: #FFFFFF;
-  border: 1px solid #E2E8F0;
-  border-radius: 16px;
-  padding: 20px;
-}
-
-.card-title-sm {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1E3A8A;
-  margin-bottom: 16px;
-}
-
-/* Current Run */
-.current-run .run-id-badge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-family: 'Fira Code', monospace;
-  font-size: 16px;
-  font-weight: 600;
-  color: #3B82F6;
-  background: #DBEAFE;
-  padding: 10px 14px;
-  border-radius: 8px;
-  margin-bottom: 12px;
-}
-
-.current-run .run-id-badge svg {
-  width: 16px;
-  height: 16px;
-}
-
-/* Info Card */
-.info-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.info-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  color: #64748B;
-}
-
-.info-item svg {
-  width: 16px;
-  height: 16px;
-  color: #94A3B8;
-}
-
-/* Results Section */
-.results-section {
-  padding: 24px;
-  border-top: 1px solid #F1F5F9;
-}
-
-.results-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-
-.results-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1E3A8A;
-}
-
-.results-actions {
-  display: flex;
-  gap: 8px;
-}
-
-/* Stats */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.stat-card {
-  background: #F8FAFC;
-  border-radius: 12px;
-  padding: 16px;
-}
-
-.stat-label {
-  font-size: 12px;
-  color: #64748B;
-  margin-bottom: 4px;
-}
-
-.stat-value {
-  font-family: 'Fira Code', monospace;
-  font-size: 24px;
-  font-weight: 700;
-  color: #1E3A8A;
-}
-
-.stat-value.model {
-  font-size: 16px;
-  text-transform: capitalize;
-}
-
-/* Table */
-.table-container {
-  background: #FFFFFF;
-  border: 1px solid #E2E8F0;
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.data-table th,
-.data-table td {
-  padding: 12px 16px;
-  text-align: left;
-  border-bottom: 1px solid #F1F5F9;
-}
-
-.data-table th {
-  background: #F8FAFC;
-  font-size: 11px;
-  font-weight: 600;
-  color: #64748B;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.data-table td {
-  font-size: 13px;
-  color: #1E3A8A;
-}
-
-.store-id {
-  font-family: 'Fira Code', monospace;
-  font-weight: 500;
-  color: #3B82F6;
-}
-
-.sku {
-  font-family: 'Fira Code', monospace;
-  font-size: 11px;
-  color: #64748B;
-  max-width: 180px;
-}
-
-.forecast {
-  font-family: 'Fira Code', monospace;
-  font-weight: 600;
-  color: #059669;
-}
-
-.ci {
-  font-family: 'Fira Code', monospace;
-  color: #64748B;
-}
-
-.segment-badge {
-  display: inline-block;
-  padding: 3px 8px;
-  border-radius: 12px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: capitalize;
-}
-
-.segment-badge.smooth {
-  background: #D1FAE5;
-  color: #065F46;
-}
-
-.segment-badge.intermittent {
-  background: #FEF3C7;
-  color: #92400E;
-}
-
-.segment-badge.lumpy {
-  background: #FEE2E2;
-  color: #991B1B;
-}
-
-/* Pagination */
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 12px 16px;
-  border-top: 1px solid #F1F5F9;
-}
-
-.page-info {
-  font-size: 13px;
-  color: #64748B;
-}
-
-/* Buttons */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px 20px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  text-decoration: none;
-  transition: all 0.2s ease;
-  border: none;
-  cursor: pointer;
-}
-
-.btn-lg {
-  padding: 16px 32px;
-  font-size: 16px;
-}
-
-.btn-sm {
-  padding: 8px 14px;
-  font-size: 13px;
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
-  color: #FFFFFF;
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
-}
-
-.btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
-}
-
-.btn-secondary {
-  background: #F1F5F9;
-  color: #1E3A8A;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: #E2E8F0;
-}
-
-.btn-secondary:disabled {
-  opacity: 0.5;
+.send-btn:disabled {
+  background: var(--color-border);
   cursor: not-allowed;
-}
-
-/* Logs */
-.logs-card {
-  margin-top: 24px;
-  background: #0f172a;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid #1e293b;
-  display: flex;
-  flex-direction: column;
-}
-
-.logs-header {
-  background: #1e293b;
-  color: #94a3b8;
-  padding: 8px 16px;
-  font-size: 12px;
-  font-family: 'Fira Code', monospace;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid #334155;
-}
-
-.logs-container {
-  padding: 16px;
-  max-height: 250px;
-  overflow-y: auto;
-  font-family: 'Fira Code', monospace;
-  font-size: 13px;
-  color: #a5b4fc;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.log-line {
-  line-height: 1.4;
-  word-break: break-all;
-}
-
-.log-line.empty {
-  color: #64748b;
-  font-style: italic;
-}
-
-.log-text {
-  color: #e2e8f0;
-}
-
-/* Responsive */
-@media (max-width: 1024px) {
-  .grid-layout {
-    grid-template-columns: 1fr;
-  }
-  
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .sidebar {
-    flex-direction: row;
-  }
-  
-  .sidebar .card {
-    flex: 1;
-  }
-}
-
-@media (max-width: 640px) {
-  .sidebar {
-    flex-direction: column;
-  }
-  
-  .stage-card {
-    grid-template-columns: 1fr;
-  }
-  
-  .results-header {
-    flex-direction: column;
-    gap: 12px;
-    align-items: flex-start;
-  }
 }
 </style>

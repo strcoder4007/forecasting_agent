@@ -1,24 +1,24 @@
 <template>
   <div class="history">
     <div class="page-header">
-      <h2 class="page-title">Forecast History</h2>
-      <p class="page-subtitle">View all your past forecast runs</p>
+      <h2 class="page-title">History</h2>
+      <p class="page-subtitle">Your past forecast runs</p>
     </div>
 
     <div v-if="loading" class="loading-state">
       <div class="spinner"></div>
-      <span>Loading history...</span>
+      <span>Loading...</span>
     </div>
 
     <div v-else-if="runs.length === 0" class="empty-state">
-      <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
         <circle cx="12" cy="12" r="10"/>
         <polyline points="12 6 12 12 16 14"/>
       </svg>
       <h3>No forecasts yet</h3>
       <p>Run your first forecast to see it here</p>
       <router-link to="/run" class="btn btn-primary">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
           <polygon points="5 3 19 12 5 21 5 3"/>
         </svg>
         Run Forecast
@@ -32,9 +32,9 @@
             <circle cx="12" cy="12" r="10"/>
             <polyline points="12 6 12 12 16 14"/>
           </svg>
-          All Forecast Runs
+          All Runs
         </h3>
-        <span class="run-count">{{ runs.length }} runs</span>
+        <span class="run-count">{{ runs.length }} {{ runs.length === 1 ? 'run' : 'runs' }}</span>
       </div>
 
       <div class="table-container">
@@ -42,17 +42,17 @@
           <thead>
             <tr>
               <th>Run ID</th>
-              <th>Date & Time</th>
+              <th>Date</th>
               <th>Status</th>
               <th>Combos</th>
-              <th>Avg WMAPE</th>
-              <th>Avg MAPE</th>
-              <th>Actions</th>
+              <th>WMAPE</th>
+              <th>MAPE</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="run in runs" :key="run.run_id">
-              <td class="run-id">{{ run.run_id.substring(0, 8) }}</td>
+              <td class="run-id">{{ run.run_id.substring(0, 6) }}</td>
               <td class="date">{{ formatDate(run.timestamp) }}</td>
               <td>
                 <span class="status-badge" :class="run.status">
@@ -61,27 +61,26 @@
                 </span>
               </td>
               <td class="combos">{{ run.total_combos?.toLocaleString() || '-' }}</td>
-              <td class="wmape">{{ formatWMAPE(run.avg_wmape) }}</td>
-              <td class="wmape">{{ formatWMAPE(run.avg_mape) }}</td>
+              <td class="metric">{{ formatWMAPE(run.avg_wmape) }}</td>
+              <td class="metric">{{ formatWMAPE(run.avg_mape) }}</td>
               <td>
                 <div class="actions">
                   <router-link
                     v-if="run.status === 'completed'"
                     :to="'/run?id=' + run.run_id"
-                    class="btn btn-secondary btn-sm"
+                    class="btn-icon"
+                    title="View"
                   >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                       <circle cx="12" cy="12" r="3"/>
                     </svg>
-                    View
                   </router-link>
-                  <button @click="deleteRun(run.run_id)" class="btn btn-danger btn-sm">
+                  <button @click="deleteRun(run.run_id)" class="btn-icon danger" title="Delete">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                       <polyline points="3 6 5 6 21 6"></polyline>
                       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                     </svg>
-                    Delete
                   </button>
                 </div>
               </td>
@@ -122,23 +121,21 @@ export default {
       return date.toLocaleDateString('en-US', { 
         month: 'short', 
         day: 'numeric',
-        year: 'numeric',
         hour: '2-digit', 
         minute: '2-digit'
       })
     },
     formatWMAPE(wmape) {
       if (!wmape) return '-'
-      return (wmape * 100).toFixed(2) + '%'
+      return (wmape * 100).toFixed(1) + '%'
     },
     async deleteRun(runId) {
-      if (!confirm('Are you sure you want to delete this run?')) return
+      if (!confirm('Delete this run?')) return
       try {
         await axios.delete(`/api/history/${runId}`)
         await this.loadHistory()
       } catch (e) {
         console.error('Failed to delete run:', e)
-        alert('Failed to delete run')
       }
     }
   }
@@ -157,16 +154,15 @@ export default {
 }
 
 .page-title {
-  font-family: 'Fira Code', monospace;
-  font-size: 28px;
-  font-weight: 700;
-  color: #1E3A8A;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--color-text);
   margin-bottom: 4px;
 }
 
 .page-subtitle {
   font-size: 14px;
-  color: #64748B;
+  color: var(--color-text-muted);
 }
 
 /* Loading */
@@ -176,14 +172,14 @@ export default {
   justify-content: center;
   gap: 12px;
   padding: 60px;
-  color: #64748B;
+  color: var(--color-text-muted);
 }
 
 .spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid #E2E8F0;
-  border-top-color: #3B82F6;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -199,36 +195,36 @@ export default {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 80px 20px;
-  background: #FFFFFF;
-  border: 1px solid #E2E8F0;
-  border-radius: 16px;
+  padding: 60px 20px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   text-align: center;
 }
 
 .empty-icon {
-  width: 64px;
-  height: 64px;
-  color: #94A3B8;
+  width: 48px;
+  height: 48px;
+  color: var(--color-text-muted);
 }
 
 .empty-state h3 {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
-  color: #1E3A8A;
+  color: var(--color-text);
 }
 
 .empty-state p {
   font-size: 14px;
-  color: #64748B;
+  color: var(--color-text-muted);
   margin-bottom: 8px;
 }
 
 /* Table */
 .table-card {
-  background: #FFFFFF;
-  border: 1px solid #E2E8F0;
-  border-radius: 16px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
@@ -236,31 +232,31 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 24px;
-  border-bottom: 1px solid #E2E8F0;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .table-title {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
-  color: #1E3A8A;
+  color: var(--color-text);
 }
 
 .table-icon {
-  width: 20px;
-  height: 20px;
-  color: #3B82F6;
+  width: 18px;
+  height: 18px;
+  color: var(--color-primary);
 }
 
 .run-count {
-  font-size: 13px;
-  color: #64748B;
-  background: #F1F5F9;
-  padding: 6px 12px;
-  border-radius: 20px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+  padding: 4px 10px;
+  border-radius: 12px;
 }
 
 .table-container {
@@ -274,16 +270,16 @@ export default {
 
 .data-table th,
 .data-table td {
-  padding: 14px 16px;
+  padding: 12px 16px;
   text-align: left;
-  border-bottom: 1px solid #F1F5F9;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .data-table th {
-  background: #F8FAFC;
-  font-size: 12px;
+  background: var(--color-bg);
+  font-size: 11px;
   font-weight: 600;
-  color: #64748B;
+  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -293,32 +289,33 @@ export default {
 }
 
 .data-table tbody tr:hover {
-  background: #F8FAFC;
+  background: rgba(124, 58, 237, 0.02);
 }
 
 .data-table td {
-  font-size: 14px;
-  color: #1E3A8A;
+  font-size: 13px;
+  color: var(--color-text);
 }
 
 .run-id {
   font-family: 'Fira Code', monospace;
   font-weight: 600;
-  color: #3B82F6;
+  color: var(--color-primary);
 }
 
 .date {
-  color: #64748B;
+  color: var(--color-text-muted);
 }
 
 .combos {
   font-family: 'Fira Code', monospace;
+  color: var(--color-text-muted);
 }
 
-.wmape {
+.metric {
   font-family: 'Fira Code', monospace;
   font-weight: 600;
-  color: #059669;
+  color: #10B981;
 }
 
 /* Status */
@@ -326,54 +323,54 @@ export default {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: capitalize;
 }
 
 .status-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
 }
 
 .status-badge.completed {
-  background: #D1FAE5;
-  color: #065F46;
+  background: rgba(16, 185, 129, 0.1);
+  color: #059669;
 }
 
 .status-dot.completed {
-  background: #059669;
+  background: #10B981;
 }
 
 .status-badge.running {
-  background: #FEF3C7;
-  color: #92400E;
+  background: rgba(245, 158, 11, 0.1);
+  color: #D97706;
 }
 
 .status-dot.running {
-  background: #D97706;
+  background: #F59E0B;
   animation: pulse 1.5s infinite;
 }
 
 .status-badge.failed {
-  background: #FEE2E2;
-  color: #991B1B;
+  background: rgba(239, 68, 68, 0.1);
+  color: #DC2626;
 }
 
 .status-dot.failed {
-  background: #DC2626;
+  background: #EF4444;
 }
 
 .status-badge.pending {
-  background: #F1F5F9;
-  color: #64748B;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
 }
 
 .status-dot.pending {
-  background: #94A3B8;
+  background: var(--color-text-muted);
 }
 
 @keyframes pulse {
@@ -384,7 +381,31 @@ export default {
 /* Actions */
 .actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
+}
+
+.btn-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-icon:hover {
+  background: var(--color-border);
+  color: var(--color-text);
+}
+
+.btn-icon.danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #EF4444;
 }
 
 /* Buttons */
@@ -394,46 +415,21 @@ export default {
   justify-content: center;
   gap: 6px;
   padding: 10px 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   font-weight: 600;
   text-decoration: none;
-  transition: all 0.2s ease;
+  transition: var(--transition);
   border: none;
   cursor: pointer;
 }
 
-.btn-secondary {
-  background: #F1F5F9;
-  color: #1E3A8A;
-}
-
-.btn-secondary:hover {
-  background: #E2E8F0;
-}
-
 .btn-primary {
-  background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
-  color: #FFFFFF;
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+  background: var(--color-primary);
+  color: white;
 }
 
 .btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
-}
-
-.btn-danger {
-  background: #FEE2E2;
-  color: #DC2626;
-}
-
-.btn-danger:hover {
-  background: #FCA5A5;
-}
-
-.btn-sm {
-  padding: 8px 12px;
-  font-size: 12px;
+  background: #6D28D9;
 }
 </style>

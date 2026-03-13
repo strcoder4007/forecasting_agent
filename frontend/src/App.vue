@@ -7,20 +7,13 @@
             <path d="M3 3v18h18" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M18 9l-5 5-4-4-3 3" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          <h1 class="logo">Demand Forecasting</h1>
+          <h1 class="logo">Forecasting</h1>
         </div>
         <nav class="nav">
-          <router-link to="/run" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="5 3 19 12 5 21 5 3"/>
-            </svg>
-            Run Forecast
+          <router-link to="/run" class="nav-link" :class="{ active: $route.path === '/run' }">
+            Chat
           </router-link>
-          <router-link to="/history" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <polyline points="12 6 12 12 16 14"/>
-            </svg>
+          <router-link to="/history" class="nav-link" :class="{ active: $route.path === '/history' }">
             History
           </router-link>
         </nav>
@@ -39,7 +32,7 @@ export default {
 </script>
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 * {
   margin: 0;
@@ -47,28 +40,48 @@ export default {
   box-sizing: border-box;
 }
 
+:root {
+  --color-primary: #7C3AED;
+  --color-primary-light: #A78BFA;
+  --color-cta: #06B6D4;
+  --color-bg: #FAF5FF;
+  --color-bg-card: #FFFFFF;
+  --color-text: #1E1B4B;
+  --color-text-muted: #6B7280;
+  --color-border: #E5E7EB;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --transition: all 0.2s ease;
+}
+
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #F8FAFC;
-  color: #1E3A8A;
-  line-height: 1.5;
+  background: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }
 
 .app {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .header {
-  background: linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%);
+  background: var(--color-bg-card);
+  border-bottom: 1px solid var(--color-border);
   padding: 16px 24px;
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 0 4px 20px rgba(30, 64, 175, 0.15);
 }
 
 .header-content {
-  max-width: 1400px;
+  max-width: 900px;
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -78,58 +91,51 @@ body {
 .logo-section {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .logo-icon {
-  width: 28px;
-  height: 28px;
-  color: #F59E0B;
+  width: 22px;
+  height: 22px;
+  color: var(--color-primary);
 }
 
 .logo {
-  font-family: 'Fira Code', monospace;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
-  color: #FFFFFF;
-  letter-spacing: -0.5px;
+  color: var(--color-text);
+  letter-spacing: -0.3px;
 }
 
 .nav {
   display: flex;
-  gap: 8px;
+  gap: 4px;
 }
 
 .nav-link {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   text-decoration: none;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--color-text-muted);
   font-size: 14px;
   font-weight: 500;
-  padding: 10px 16px;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-}
-
-.nav-icon {
-  width: 18px;
-  height: 18px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  transition: var(--transition);
 }
 
 .nav-link:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #FFFFFF;
+  color: var(--color-text);
+  background: rgba(124, 58, 237, 0.05);
 }
 
-.nav-link.router-link-active {
-  background: rgba(255, 255, 255, 0.15);
-  color: #FFFFFF;
+.nav-link.active {
+  color: var(--color-primary);
+  background: rgba(124, 58, 237, 0.08);
 }
 
 .main {
-  max-width: 1400px;
+  flex: 1;
+  max-width: 900px;
+  width: 100%;
   margin: 0 auto;
   padding: 32px 24px;
 }
@@ -141,48 +147,42 @@ body {
   justify-content: center;
   gap: 8px;
   padding: 12px 24px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 600;
   text-decoration: none;
-  transition: all 0.2s ease;
+  transition: var(--transition);
   border: none;
   cursor: pointer;
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
-  color: #FFFFFF;
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+  background: var(--color-primary);
+  color: white;
 }
 
 .btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
+  background: #6D28D9;
+  transform: translateY(-1px);
 }
 
 .btn-secondary {
-  background: #FFFFFF;
-  color: #1E40AF;
-  border: 1px solid #E2E8F0;
+  background: var(--color-bg-card);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
 }
 
 .btn-secondary:hover {
-  background: #F1F5F9;
-  border-color: #3B82F6;
+  border-color: var(--color-primary-light);
+  background: rgba(124, 58, 237, 0.02);
 }
 
 /* Card styles */
 .card {
-  background: #FFFFFF;
-  border: 1px solid #E2E8F0;
-  border-radius: 16px;
-  padding: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  transition: all 0.2s ease;
-}
-
-.card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
 }
 </style>

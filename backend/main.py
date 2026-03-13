@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from .data_loader import DataLoader, DataLoadError
 from .forecast_pipeline import ForecastPipeline
+from .chat_service import ChatService
 
 # Initialize FastAPI app
 app = FastAPI(title="Demand Forecasting Agent", version="1.0.0")
@@ -27,6 +28,7 @@ app.add_middleware(
 # Global state
 data_loader = DataLoader()
 forecast_pipeline: Optional[ForecastPipeline] = None
+chat_service = ChatService(data_loader)
 
 # In-memory storage for runs
 runs_storage: dict = {}
@@ -47,6 +49,31 @@ class RunForecastResponse(BaseModel):
     run_id: str
     status: str
 
+class ChatRequest(BaseModel):
+    query: str
+    run_id: Optional[str] = None
+
+class ChatResponse(BaseModel):
+    response: str
+    action: Optional[str] = None
+
+@app.post("/api/chat", response_model=ChatResponse)
+async def chat_with_agent(request: ChatRequest):
+    """Interact with the forecasting agent using natural language."""
+    results = None
+    if request.run_id:
+        with runs_lock:
+            if request.run_id in runs_storage:
+                run = runs_storage[request.run_id]
+                if run["status"] == "completed":
+                    results = run.get("results", [])
+
+    response_text = chat_service.chat(request.query, results)
+
+    if response_text == "[START_FORECAST]":
+        return ChatResponse(response="Starting a new forecast run for you now...", action="START_FORECAST")
+
+    return ChatResponse(response=response_text)
 
 class ForecastStatusResponse(BaseModel):
     run_id: str
