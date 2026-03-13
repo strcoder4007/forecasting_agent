@@ -12,7 +12,7 @@ A machine learning-powered demand forecasting system built with FastAPI and Vue.
 forecasting_agent/
 ├── backend/           # FastAPI application and ML pipeline
 ├── frontend/          # Vue.js 3 frontend
-├── tests/             # Test scripts (pytest)
+├── agent_scripts/     # Test scripts (pytest)
 ├── design-system/     # UI/UX design system
 ├── requirements.txt   # Python dependencies
 └── README.md
@@ -22,11 +22,11 @@ forecasting_agent/
 
 ### Test Scripts
 
-**All test scripts must be stored in the `tests/` folder.**
+**All test scripts must be stored in the `agent_scripts/` folder.**
 
 - Use `pytest` for testing
 - Test files should follow naming convention: `test_*.py`
-- Run tests with: `pytest tests/`
+- Run tests with: `pytest agent_scripts/`
 
 Example:
 ```bash
@@ -34,7 +34,7 @@ Example:
 python test_agent.py
 
 # Correct
-pytest tests/test_agent.py
+pytest agent_scripts/test_agent.py
 ```
 
 ### Python Environment

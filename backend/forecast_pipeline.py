@@ -19,11 +19,12 @@ class ForecastPipeline:
         self.stock_weekly: Optional[pd.DataFrame] = None
         self.combo_features: Optional[pd.DataFrame] = None
         self.results: list = []
+        self.model_outputs: dict = {}
         self._progress = None
         self._current_progress = 0.0
         self._current_stage = "starting"
 
-    def run(self, progress_callback: Optional[Callable] = None) -> list:
+    def run(self, progress_callback: Optional[Callable] = None) -> tuple[list, dict]:
         """Run the complete forecasting pipeline."""
         self._progress = progress_callback
         self._current_progress = 0.0
@@ -55,17 +56,17 @@ class ForecastPipeline:
 
         # Stage 6: Model training (70%)
         self._update_progress(60, "training", "Training models...")
-        model_outputs = self._train_models(self.combo_features)
+        self.model_outputs = self._train_models(self.combo_features)
 
         # Stage 7: Inference (85%)
         self._update_progress(80, "predicting", "Generating forecasts...")
         self.results = self._generate_forecasts(
-            self.combo_features, model_outputs
+            self.combo_features, self.model_outputs
         )
 
         # Stage 8: Finalize (100%)
         self._update_progress(100, "done", "Forecast complete!")
-        return self.results
+        return self.results, self.model_outputs
 
     def _update_progress(self, progress: float, stage: str, message: str):
         """Update progress."""

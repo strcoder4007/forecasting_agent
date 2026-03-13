@@ -49,31 +49,48 @@ class RunForecastResponse(BaseModel):
     run_id: str
     status: str
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
 class ChatRequest(BaseModel):
-    query: str
+    messages: list[ChatMessage]
     run_id: Optional[str] = None
 
 class ChatResponse(BaseModel):
     response: str
     action: Optional[str] = None
+    action_payload: Optional[str] = None
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_with_agent(request: ChatRequest):
     """Interact with the forecasting agent using natural language."""
     results = None
+    model_outputs = None
+    features = None
     if request.run_id:
         with runs_lock:
             if request.run_id in runs_storage:
                 run = runs_storage[request.run_id]
                 if run["status"] == "completed":
                     results = run.get("results", [])
+                    model_outputs = run.get("model_outputs", {})
+                    features = run.get("features", None)
 
-    response_text = chat_service.chat(request.query, results)
+    # Convert Pydantic messages to dict
+    messages = [{"role": m.role, "content": m.content} for m in request.messages]
 
-    if response_text == "[START_FORECAST]":
-        return ChatResponse(response="Starting a new forecast run for you now...", action="START_FORECAST")
+    # Pass runs_storage to chat_service
+    response_text, action, action_payload = chat_service.chat(
+        messages=messages, 
+        current_run_id=request.run_id,
+        run_results=results, 
+        model_outputs=model_outputs, 
+        features=features,
+        all_runs=runs_storage
+    )
 
-    return ChatResponse(response=response_text)
+    return ChatResponse(response=response_text, action=action, action_payload=action_payload)
 
 class ForecastStatusResponse(BaseModel):
     run_id: str
@@ -150,7 +167,7 @@ async def run_forecast():
             forecast_pipeline = ForecastPipeline(data_loader)
 
             # Run forecast
-            results = forecast_pipeline.run(
+            results, model_outputs = forecast_pipeline.run(
                 progress_callback=lambda p, s, m: _update_progress(run_id, p, s, m)
             )
 
@@ -161,6 +178,8 @@ async def run_forecast():
                 runs_storage[run_id]["stage"] = "done"
                 runs_storage[run_id]["message"] = "Forecast completed successfully"
                 runs_storage[run_id]["results"] = results
+                runs_storage[run_id]["model_outputs"] = model_outputs
+                runs_storage[run_id]["features"] = forecast_pipeline.combo_features
                 runs_storage[run_id]["total_combos"] = len(results)
                 if results:
                     wmape_values = [r.get("wmape", 0) for r in results if "wmape" in r]

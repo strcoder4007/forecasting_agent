@@ -118,7 +118,7 @@ The pipeline processes all ~48,000 SKU-store combinations without arbitrary limi
 
 ## Questions It Can Answer
 
-### 1. Demand Forecasting
+### 1. Direct Demand & Inventory Planning
 
 - "What is the forecasted demand for SKU X in Store Y next week?"
 - "Which 10 stores are expected to sell the most of SKU X next week?"

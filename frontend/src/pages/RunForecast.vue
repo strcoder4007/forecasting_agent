@@ -2,14 +2,6 @@
   <div class="chat-page">
     <div class="chat-container">
       <div class="chat-header">
-        <div class="chat-title">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-            <path d="M12 2a10 10 0 1 0 10 10H12V2z"></path>
-            <path d="M12 12 2.1 12"></path>
-            <path d="M12 12 19 4.9"></path>
-          </svg>
-          <span>Forecasting Agent</span>
-        </div>
         <div v-if="currentRunId" class="run-badge">
           <span class="run-dot"></span>
           Run {{ currentRunId.substring(0, 6) }}
@@ -24,18 +16,70 @@
 
       <div class="chat-messages" ref="chatHistory">
         <div v-if="messages.length === 0" class="welcome-state">
-          <div class="welcome-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32">
-              <path d="M3 3v18h18"></path>
-              <path d="M18 9l-5 5-4-4-3 3"></path>
-            </svg>
+          <div class="welcome-header">
+            <div class="welcome-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="28" height="28">
+                <path d="M3 3v18h18"></path>
+                <path d="M18 9l-5 5-4-4-3 3"></path>
+              </svg>
+            </div>
+            <div>
+              <h2>Forecasting Assistant</h2>
+              <p>Ask me about demand forecasts, inventory risks, or run a new forecast.</p>
+            </div>
           </div>
-          <h2>How can I help you forecast?</h2>
-          <p>Ask me to run a demand forecast or answer questions about your data.</p>
-          <div class="quick-actions">
-            <button @click="sendQuick('Run a new forecast for me')">Run forecast</button>
-            <button @click="sendQuick('What is the forecasted demand for next week?')">Demand query</button>
-            <button @click="sendQuick('Which products are at risk of stockout?')">Stockout risks</button>
+
+          <div class="suggestion-cards">
+            <div class="card">
+              <div class="card-header">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                  <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                </svg>
+                <span>Demand Forecasting</span>
+              </div>
+              <button @click="sendQuick('What is the forecasted demand for next week?')">Forecasted demand next week</button>
+              <button @click="sendQuick('Which 10 stores are expected to sell the most next week?')">Top stores next week</button>
+              <button @click="sendQuick('Show me SKUs forecasted to sell more than 100 units')">High-demand SKUs</button>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <span>Inventory Risks</span>
+              </div>
+              <button @click="sendQuick('Which products are at risk of stockout?')">Products at stockout risk</button>
+              <button @click="sendQuick('Which products have 0 forecast due to being out of stock?')">Zero forecast - out of stock</button>
+              <button @click="sendQuick('Are there smooth demand items currently out of stock?')">Smooth demand out of stock</button>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <span>Insights</span>
+              </div>
+              <button @click="sendQuick('Break down forecasted sales by store grade')">Sales by store grade</button>
+              <button @click="sendQuick('Which region has highest lumpy demand?')">Lumpy demand by region</button>
+              <button @click="sendQuick('How accurate is the forecast overall?')">Forecast accuracy</button>
+            </div>
+
+            <div class="card card-action">
+              <div class="card-header">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+                <span>Run Forecast</span>
+              </div>
+              <button @click="sendQuick('Run a new forecast for me')" class="primary">Run new forecast</button>
+              <p class="card-hint">Process your data and get predictions</p>
+            </div>
           </div>
         </div>
 
@@ -160,7 +204,13 @@ export default {
       this.scrollToBottom()
 
       try {
-        const payload = { query: userText }
+        const payload = { 
+          messages: this.messages.filter(m => m.type === 'text').map(m => ({
+            role: m.role,
+            content: m.content
+          }))
+        }
+        
         if (this.currentRunId) {
           payload.run_id = this.currentRunId
         }
@@ -170,6 +220,11 @@ export default {
         if (res.data.action === 'START_FORECAST') {
           this.messages.push({ role: 'ai', type: 'text', content: res.data.response })
           await this.startForecast()
+        } else if (res.data.action === 'LOAD_RUN') {
+           this.messages.push({ role: 'ai', type: 'text', content: res.data.response })
+           this.currentRunId = res.data.action_payload
+           this.$router.replace({ query: { id: this.currentRunId } })
+           await this.loadResultsIfMissing()
         } else {
           this.messages.push({ role: 'ai', type: 'text', content: res.data.response })
         }
@@ -373,60 +428,131 @@ export default {
 .welcome-state {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 40px 20px;
+  padding: 24px 4px;
 }
 
-.welcome-icon {
-  width: 64px;
-  height: 64px;
-  background: rgba(124, 58, 237, 0.08);
+.welcome-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 28px;
+  text-align: left;
+}
+
+.welcome-header .welcome-icon {
+  width: 48px;
+  height: 48px;
+  background: rgba(124, 58, 237, 0.1);
   color: var(--color-primary);
-  border-radius: 50%;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 20px;
+  margin-bottom: 0;
+  flex-shrink: 0;
 }
 
-.welcome-state h2 {
+.welcome-header h2 {
   font-size: 18px;
   font-weight: 600;
   color: var(--color-text);
-  margin-bottom: 8px;
+  margin: 0 0 4px 0;
 }
 
-.welcome-state p {
+.welcome-header p {
   font-size: 14px;
   color: var(--color-text-muted);
-  max-width: 320px;
+  margin: 0;
 }
 
-.quick-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 24px;
-  flex-wrap: wrap;
-  justify-content: center;
+/* Suggestion Cards */
+.suggestion-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
 }
 
-.quick-actions button {
+.suggestion-cards .card {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
-  padding: 10px 16px;
-  border-radius: 24px;
-  color: var(--color-text);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: var(--transition);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.quick-actions button:hover {
-  border-color: var(--color-primary-light);
-  background: rgba(124, 58, 237, 0.04);
-  transform: translateY(-1px);
+.suggestion-cards .card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.suggestion-cards .card-header svg {
+  color: var(--color-primary);
+}
+
+.suggestion-cards .card-action {
+  background: rgba(124, 58, 237, 0.03);
+  border-color: rgba(124, 58, 237, 0.15);
+}
+
+.suggestion-cards .card-action .card-header {
+  color: var(--color-primary);
+}
+
+.suggestion-cards .card-action .card-header svg {
+  color: var(--color-primary);
+}
+
+.suggestion-cards button {
+  background: transparent;
+  border: none;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-size: 13px;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: var(--transition);
+  line-height: 1.4;
+}
+
+.suggestion-cards button:hover {
+  background: var(--color-bg);
+}
+
+.suggestion-cards button.primary {
+  background: var(--color-primary);
+  color: white;
+  text-align: center;
+  font-weight: 500;
+}
+
+.suggestion-cards button.primary:hover {
+  background: #6D28D9;
+}
+
+.suggestion-cards .card-hint {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-align: center;
+  margin: 0;
+  padding-top: 4px;
+}
+
+/* Mobile: stack cards */
+@media (max-width: 640px) {
+  .suggestion-cards {
+    grid-template-columns: 1fr;
+  }
+}
 }
 
 /* Messages */
