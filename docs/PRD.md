@@ -33,38 +33,30 @@
 
 | Page | Purpose |
 |------|---------|
-| **Dashboard** | Overview: recent forecasts, key metrics, run status |
-| **Run Forecast** | Upload data, configure, trigger forecast run |
-| **Results** | View forecast results, export data |
+| **Chat Agent (Main)** | Conversational UI to trigger forecasts, load history, and run data analyses |
 | **History** | Past runs and their metrics |
 
 ### 3.2 Visual Design
 
 - **Color Palette:**
-  - Primary: `#2563EB` (Blue)
-  - Secondary: `#64748B` (Slate)
-  - Accent: `#10B981` (Green for success)
+  - Primary: `#1E3A8A` (Dark Blue)
+  - Secondary: `#3B82F6` (Light Blue)
+  - Accent: `#059669` (Green for success)
   - Error: `#EF4444` (Red)
   - Background: `#F8FAFC`
-  - Card: `#FFFFFF`
+  - Card/Bubble: `#FFFFFF`
 
 - **Typography:**
   - Font: Inter or system-ui
   - Headings: 24px (h1), 20px (h2), 16px (h3)
   - Body: 14px
 
-- **Spacing:** 8px base unit (8, 16, 24, 32px)
-
 ### 3.3 Components
 
-| Component |
+| Component | States | Description |
 |-----------|--------|-------------|
-| Button | States | Description | default, hover, loading, disabled | Primary actions |
-| FileUpload | idle, dragging, uploading, done | CSV/Parquet upload |
-| StatusBadge | running, success, failed | Forecast run status |
-| DataTable | loading, empty, populated | Results display |
-| ProgressBar | indeterminate, percentage | Run progress |
-| Alert | info, warning, error | Notifications |
+| Chat Bubble | user, ai, system, loading | Displays chat conversation |
+| ProgressBubble | running, success, failed | Native chat widget showing forecast run progress |
 
 ---
 
@@ -80,32 +72,33 @@
 | **Weekly Aggregation** | Aggregate daily data to weekly (Monday start). |
 | **False-Zero Correction** | Flag items with zero stock and zero sales, impute with category median. |
 | **Demand Segmentation** | Classify combos as smooth, intermittent, or lumpy based on CV and zero %. |
-| **Feature Engineering** | Compute 12 features including real pricing, promotional signals (discount_pct), and Categorical Target Encoding. |
-| **Model Training** | Two-round walk-forward validation. Route predictions to the lowest WMAPE model per segment. |
+| **Feature Engineering** | Compute expanded features including actual prices, promotional signals (is_promotional, promo_depth), and Categorical Target Encoding. |
+| **Model Training** | Time-series walk-forward validation. Route predictions to the lowest WMAPE model per segment (Naive, Ridge, XGBoost, LightGBM with Poisson objectives). |
 | **Inference** | Generate forecasts utilizing segment-routed best models with post-processing (bias correction + ROS blend). |
-| **CI Estimation** | 80% confidence intervals from validation residuals. |
-| **Results Export** | Return forecasts as JSON/CSV. |
+| **Agent: Supervisor** | `gemini-3.1-flash-lite-preview` maintains memory and routes user requests. |
+| **Agent: Analyst** | `gemini-3.1-pro-preview` runs DuckDB SQL queries against memory and simulates promotional what-if scenarios. |
 
 #### Frontend (Vue.js)
 
 | Feature | Description |
 |---------|-------------|
-| **Dashboard** | Show last run status, summary metrics (total combos, avg WMAPE). Show data file validation status. |
-| **Run Trigger** | Button to start forecast. Show progress bar and detailed execution logs during run. |
-| **Results View** | Table with forecast data. Sortable columns. Cached locally using IndexedDB for fast loading. |
-| **Export** | Generate and download results as CSV purely client-side from IndexedDB. |
-| **History** | List of past runs with timestamps, status, and validation WMAPE. |
+| **Chat Interface** | Main UI for interacting with the application via natural language. |
+| **Live Progress** | Real-time execution logs streamed directly into a chat bubble during a forecast run. |
+| **Context Loading** | Smoothly switches between historical runs when instructed by the AI or selected from History. |
+| **History** | List of past runs with timestamps, status, WMAPE, and MAPE metrics. |
 
 ### 4.2 Data Flow
 
 ```
 1. Backend reads data files from /data folder (pre-loaded)
-2. User clicks "Run Forecast"
-3. Backend processes in stages:
+2. User types "Run a forecast" into the chat
+3. Supervisor Agent routes intent to start pipeline
+4. Backend processes in stages:
    - Aggregate → Features → Train → Predict → Post-process
-4. Frontend polls for status updates
-5. Results displayed in table
-6. User exports CSV
+5. Frontend polls for status updates natively in chat
+6. User asks data question ("What is the forecast for SKU X?")
+7. Analyst Agent generates DuckDB SQL, queries Pandas DFs in RAM
+8. Analyst Agent returns synthesized markdown response
 ```
 
 **Data Files Location:** `/data/` folder (pre-loaded, no upload needed)

@@ -553,7 +553,6 @@ export default {
     grid-template-columns: 1fr;
   }
 }
-}
 
 /* Messages */
 .message {
