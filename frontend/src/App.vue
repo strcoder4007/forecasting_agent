@@ -2,13 +2,6 @@
   <div class="app">
     <header class="header">
       <div class="header-content">
-        <div class="logo-section">
-          <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 3v18h18" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M18 9l-5 5-4-4-3 3" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <h1 class="logo">Forecasting</h1>
-        </div>
         <nav class="nav">
           <router-link to="/run" class="nav-link" :class="{ active: $route.path === '/run' }">
             Chat
@@ -72,8 +65,7 @@ body {
 }
 
 .header {
-  background: var(--color-bg-card);
-  border-bottom: 1px solid var(--color-border);
+  background: transparent;
   padding: 16px 24px;
   position: sticky;
   top: 0;
@@ -81,11 +73,11 @@ body {
 }
 
 .header-content {
-  max-width: 900px;
+  max-width: 100%;
   margin: 0 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end; /* align nav to the right if there's no logo, or center, but user said 'only chat and history buttons' */
 }
 
 .logo-section {
@@ -109,35 +101,41 @@ body {
 
 .nav {
   display: flex;
-  gap: 4px;
+  gap: 12px;
 }
 
 .nav-link {
   text-decoration: none;
   color: var(--color-text-muted);
   font-size: 14px;
-  font-weight: 500;
-  padding: 8px 16px;
-  border-radius: var(--radius-sm);
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 30px; /* rounded pill shape */
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-sm);
   transition: var(--transition);
+  border: 1px solid var(--color-border);
 }
 
 .nav-link:hover {
   color: var(--color-text);
-  background: rgba(124, 58, 237, 0.05);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 
 .nav-link.active {
-  color: var(--color-primary);
-  background: rgba(124, 58, 237, 0.08);
+  color: white;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
 }
 
 .main {
   flex: 1;
-  max-width: 900px;
+  max-width: 100%;
   width: 100%;
   margin: 0 auto;
-  padding: 32px 24px;
+  padding: 0 24px;
 }
 
 /* Button styles */

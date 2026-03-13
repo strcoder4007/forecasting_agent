@@ -1,4 +1,5 @@
 import os
+import json
 import duckdb
 import pandas as pd
 import numpy as np
@@ -19,6 +20,7 @@ class ChatService:
         self.current_features_df = None
         self.current_model_outputs = None
         self.all_runs = {}
+        self.trace = []
         
         # Action state
         self.pending_action = None
@@ -64,21 +66,28 @@ class ChatService:
             features_df = self.current_features_df
             
             result_df = duckdb.query(query).df()
-            return result_df.to_markdown(index=False)
+            res = result_df.to_markdown(index=False)
+            self.trace.append({"type": "tool_result", "agent": "analyst", "name": "execute_sql", "result": f"Returned {len(result_df)} rows"})
+            return res
         except Exception as e:
+            self.trace.append({"type": "error", "agent": "analyst", "name": "execute_sql", "message": str(e)})
             return f"SQL Error: {str(e)}"
 
     def simulate_promotion(self, sku_id: str, store_id: str, discount_pct: float) -> str:
         """Simulates the new forecast if a specific discount percentage is applied to a SKU in a Store next week. discount_pct should be a decimal (e.g. 0.2 for 20%)."""
         if self.current_features_df is None or self.current_model_outputs is None:
-            return "Simulation is not available because no context is loaded. Load a completed run first."
+            err = "Simulation is not available because no context is loaded. Load a completed run first."
+            self.trace.append({"type": "error", "agent": "analyst", "name": "simulate_promotion", "message": err})
+            return err
 
         df = self.current_features_df
         mask = (df["store_id"] == store_id) & (df["sku_id"] == sku_id)
         combo_data = df[mask]
         
         if combo_data.empty:
-            return f"Error: No historical data found for SKU {sku_id} in Store {store_id}."
+            err = f"Error: No historical data found for SKU {sku_id} in Store {store_id}."
+            self.trace.append({"type": "error", "agent": "analyst", "name": "simulate_promotion", "message": err})
+            return err
             
         latest_row = combo_data.sort_values("week_start").iloc[-1:].copy()
         
@@ -131,7 +140,9 @@ class ChatService:
         recent_avg = combo_data.sort_values("week_start").tail(4)["qty_sold"].mean()
         final_forecast = max(0, round(0.5 * forecast + 0.5 * recent_avg))
         
-        return f"Simulated forecast for SKU {sku_id} at Store {store_id} with {discount_pct*100}% discount: **{final_forecast} units**. (Model used: {best_model}, Segment: {segment})"
+        res = f"Simulated forecast for SKU {sku_id} at Store {store_id} with {discount_pct*100}% discount: **{final_forecast} units**. (Model used: {best_model}, Segment: {segment})"
+        self.trace.append({"type": "tool_result", "agent": "analyst", "name": "simulate_promotion", "result": f"Forecast: {final_forecast} ({best_model})"})
+        return res
 
     def analyze_data(self, complex_query: str) -> str:
         """Handoff tool: Passes complex data queries to the specialized Data Analyst AI."""
@@ -153,6 +164,8 @@ class ChatService:
         4. Read the output, synthesize a beautiful markdown answer, and return it.
         """
 
+        self.trace.append({"type": "tool_call", "agent": "analyst", "name": "Analyst Wakeup", "args": {"query": complex_query}})
+
         try:
             chat_session = self.client.chats.create(
                 model=self.analyst_model,
@@ -162,15 +175,20 @@ class ChatService:
                     temperature=0.1,
                 )
             )
+            
+            # Using native loop here since the tools handle their own trace appends
             response = chat_session.send_message(complex_query)
+            
             return response.text
         except Exception as e:
+            self.trace.append({"type": "error", "agent": "analyst", "name": "analyze_data", "message": str(e)})
             return f"Analyst Error: {str(e)}"
 
-    def chat(self, messages: list, current_run_id: str = None, run_results: list = None, model_outputs: dict = None, features: pd.DataFrame = None, all_runs: dict = None) -> tuple[str, str, str]:
+    def chat(self, messages: list, current_run_id: str = None, run_results: list = None, model_outputs: dict = None, features: pd.DataFrame = None, all_runs: dict = None) -> tuple[str, str, str, list]:
         self.pending_action = None
         self.pending_payload = None
         self.all_runs = all_runs or {}
+        self.trace = []
         
         if run_results:
             self.current_results_df = pd.DataFrame(run_results)
@@ -213,18 +231,93 @@ class ChatService:
         latest_user_query = messages[-1]["content"]
 
         try:
+            # Create session without automatic tool execution
             chat_session = self.client.chats.create(
                 model=self.supervisor_model,
                 history=formatted_history,
+                config=types.GenerateContentConfig(
+                    system_instruction=supervisor_system,
+                    temperature=0.3,
+                )
+            )
+            
+            tools_map = {
+                "start_new_forecast": self.start_new_forecast,
+                "get_historical_runs": self.get_historical_runs,
+                "load_historical_run": self.load_historical_run,
+                "analyze_data": self.analyze_data
+            }
+            
+            # Send message with tools attached but automatic execution disabled by default behavior when we intercept it
+            response = self.client.models.generate_content(
+                model=self.supervisor_model,
+                contents=formatted_history + [types.Content(role="user", parts=[types.Part.from_text(text=latest_user_query)])],
                 config=types.GenerateContentConfig(
                     system_instruction=supervisor_system,
                     tools=[self.start_new_forecast, self.get_historical_runs, self.load_historical_run, self.analyze_data],
                     temperature=0.3,
                 )
             )
-            response = chat_session.send_message(latest_user_query)
             
-            return response.text, self.pending_action, self.pending_payload
+            # Manual function call loop
+            while response.function_calls:
+                for fn in response.function_calls:
+                    fn_name = fn.name
+                    fn_args = fn.args
+                    
+                    self.trace.append({
+                        "type": "tool_call",
+                        "agent": "supervisor",
+                        "name": fn_name,
+                        "args": {k: v for k, v in fn_args.items()} if fn_args else {}
+                    })
+                    
+                    # Execute
+                    if fn_name in tools_map:
+                        try:
+                            # GenAI SDK unrolls dict directly to kwargs
+                            result = tools_map[fn_name](**fn_args) if fn_args else tools_map[fn_name]()
+                            
+                            self.trace.append({
+                                "type": "tool_result",
+                                "agent": "supervisor",
+                                "name": fn_name,
+                                "result": str(result)[:200] + "..." if len(str(result)) > 200 else str(result)
+                            })
+                            
+                            # Append result back to conversation
+                            formatted_history.append(response.candidates[0].content)
+                            formatted_history.append(
+                                types.Content(
+                                    role="user",
+                                    parts=[types.Part.from_function_response(name=fn_name, response={"result": result})]
+                                )
+                            )
+                        except Exception as e:
+                            self.trace.append({"type": "error", "agent": "supervisor", "name": fn_name, "message": str(e)})
+                            formatted_history.append(response.candidates[0].content)
+                            formatted_history.append(
+                                types.Content(
+                                    role="user",
+                                    parts=[types.Part.from_function_response(name=fn_name, response={"error": str(e)})]
+                                )
+                            )
+                    else:
+                        break # unknown tool
+                
+                # Send the function response back to the model
+                response = self.client.models.generate_content(
+                    model=self.supervisor_model,
+                    contents=formatted_history,
+                    config=types.GenerateContentConfig(
+                        system_instruction=supervisor_system,
+                        tools=[self.start_new_forecast, self.get_historical_runs, self.load_historical_run, self.analyze_data],
+                        temperature=0.3,
+                    )
+                )
+
+            return response.text, self.pending_action, self.pending_payload, self.trace
             
         except Exception as e:
-            return f"Supervisor Error: {str(e)}", None, None
+            self.trace.append({"type": "error", "agent": "system", "message": f"Critical Error: {str(e)}"})
+            return f"System Error: {str(e)}", None, None, self.trace

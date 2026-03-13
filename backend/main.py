@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from .data_loader import DataLoader, DataLoadError
 from .forecast_pipeline import ForecastPipeline
 from .chat_service import ChatService
+from . import storage
 
 # Initialize FastAPI app
 app = FastAPI(title="Demand Forecasting Agent", version="1.0.0")
@@ -31,7 +32,8 @@ forecast_pipeline: Optional[ForecastPipeline] = None
 chat_service = ChatService(data_loader)
 
 # In-memory storage for runs
-runs_storage: dict = {}
+storage.init_storage()
+runs_storage: dict = storage.load_all_runs_metadata()
 runs_lock = threading.Lock()
 
 # Define data directory
@@ -61,6 +63,7 @@ class ChatResponse(BaseModel):
     response: str
     action: Optional[str] = None
     action_payload: Optional[str] = None
+    trace: list[dict] = []
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_with_agent(request: ChatRequest):
@@ -73,15 +76,14 @@ async def chat_with_agent(request: ChatRequest):
             if request.run_id in runs_storage:
                 run = runs_storage[request.run_id]
                 if run["status"] == "completed":
-                    results = run.get("results", [])
-                    model_outputs = run.get("model_outputs", {})
-                    features = run.get("features", None)
+                    # Load heavy data from DuckDB just for this chat session
+                    results, features, model_outputs = storage.load_run_data(request.run_id)
 
     # Convert Pydantic messages to dict
     messages = [{"role": m.role, "content": m.content} for m in request.messages]
 
     # Pass runs_storage to chat_service
-    response_text, action, action_payload = chat_service.chat(
+    response_text, action, action_payload, trace = chat_service.chat(
         messages=messages, 
         current_run_id=request.run_id,
         run_results=results, 
@@ -90,7 +92,7 @@ async def chat_with_agent(request: ChatRequest):
         all_runs=runs_storage
     )
 
-    return ChatResponse(response=response_text, action=action, action_payload=action_payload)
+    return ChatResponse(response=response_text, action=action, action_payload=action_payload, trace=trace)
 
 class ForecastStatusResponse(BaseModel):
     run_id: str
@@ -181,6 +183,7 @@ async def run_forecast():
                 runs_storage[run_id]["model_outputs"] = model_outputs
                 runs_storage[run_id]["features"] = forecast_pipeline.combo_features
                 runs_storage[run_id]["total_combos"] = len(results)
+                # Calculate WMAPE/MAPE metrics from results
                 if results:
                     wmape_values = [r.get("wmape", 0) for r in results if "wmape" in r]
                     mape_values = [r.get("mape", 0) for r in results if "mape" in r]
@@ -190,6 +193,20 @@ async def run_forecast():
                     runs_storage[run_id]["avg_mape"] = (
                         sum(mape_values) / len(mape_values) if mape_values else 0
                     )
+                
+                # Attach heavy data temporarily for saving
+                runs_storage[run_id]["results"] = results
+                runs_storage[run_id]["model_outputs"] = model_outputs
+                runs_storage[run_id]["features"] = forecast_pipeline.combo_features
+                
+            storage.save_run(runs_storage[run_id])
+            
+            # Remove heavy data from RAM after saving to DuckDB
+            with runs_lock:
+                runs_storage[run_id].pop("results", None)
+                runs_storage[run_id].pop("model_outputs", None)
+                runs_storage[run_id].pop("features", None)
+
 
         except DataLoadError as e:
             with runs_lock:
@@ -211,14 +228,15 @@ async def run_forecast():
 
 
 def _update_progress(run_id: str, progress: float, stage: str, message: str):
-    """Update progress for a run."""
+    """Callback to update progress for a run."""
     with runs_lock:
         if run_id in runs_storage:
             runs_storage[run_id]["progress"] = progress
             runs_storage[run_id]["stage"] = stage
             runs_storage[run_id]["message"] = message
-            timestamp = datetime.now().strftime("%H:%M:%S")
-            runs_storage[run_id]["logs"].append(f"[{timestamp}] [{stage}] {message}")
+            runs_storage[run_id]["logs"].append(f"[{datetime.now().strftime('%H:%M:%S')}] [{stage}] {message}")
+            # Ensure we save inside the lock where we know the run_id exists
+            storage.save_run(runs_storage[run_id])
 
 
 @app.get("/api/forecast/status/{run_id}", response_model=ForecastStatusResponse)
@@ -309,7 +327,9 @@ async def delete_run(run_id: str):
             raise HTTPException(status_code=404, detail="Run not found")
 
         del runs_storage[run_id]
-        return {"message": "Run deleted successfully", "run_id": run_id}
+    
+    storage.delete_run_data(run_id)
+    return {"message": "Run deleted successfully", "run_id": run_id}
 
 
 @app.get("/api/export/{run_id}")
@@ -329,9 +349,9 @@ async def export_forecast(run_id: str):
                 detail=f"Run not completed yet. Status: {run['status']}",
             )
 
-        results = run.get("results", [])
-        if not results:
-            raise HTTPException(status_code=404, detail="No results to export")
+    results, _, _ = storage.load_run_data(run_id)
+    if not results:
+        raise HTTPException(status_code=404, detail="No results to export")
 
     # Generate CSV
     def generate_csv():
