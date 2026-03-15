@@ -7,10 +7,11 @@ A machine learning-powered demand forecasting system built with FastAPI and Vue.
 - **Autonomous AI Chatbot (Two-Tier Architecture)**:
   - **Tier 1 (Supervisor)**: Fast conversational intent router that manages memory, context, and automates starting/loading runs.
   - **Tier 2 (Data Analyst)**: Advanced AI agent that writes DuckDB SQL queries against the pipeline's memory and simulates promotional scenarios on the fly.
-- **Data Validation**: Validates sales, stock, item, and store master data files
-- **Multi-Stage Pipeline**: Weekly aggregation, false-zero correction, demand segmentation
-- **Advanced Feature Engineering**: Includes Categorical Target Encoding, Poisson-optimized models, and real promotional signals (`is_promotional`, `promo_depth`).
-- **Segment-Based Model Routing**: Dynamically evaluates and routes predictions between Seasonal Naive, Ridge Regression, XGBoost, and LightGBM based on the lowest WMAPE per demand segment.
+- **Autonomous Data Scientist (Architecture 2.0)**:
+  - **Multi-Agent Orchestration**: Replaces static pipelines with dynamic code-generating agents (Explorer, Transformer, Modeler, Synthesizer).
+  - **Python Execution Sandbox**: Agents autonomously write, execute, and self-correct Python code to clean data, engineer features, and train models on the fly.
+  - **Dynamic Schema Adaptation**: Adapts to unknown CSV/Excel structures automatically without hardcoded loaders.
+- **Agent Trace Observability**: A dedicated split-screen UI panel showing the agent's real-time thoughts, generated Python code, stdout/stderr, and SQL queries.
 - **REST API**: Full REST API for running forecasts, querying chat, and retrieving results.
 - **Real-Time Execution Logs**: Granular progress tracking rendered natively as message bubbles inside the chat interface.
 
@@ -30,9 +31,10 @@ A machine learning-powered demand forecasting system built with FastAPI and Vue.
 forecasting_agent/
 ├── backend/
 │   ├── main.py              # FastAPI application & API endpoints
-│   ├── chat_service.py      # Two-Tier Agent logic & tool calling
-│   ├── data_loader.py       # Data loading and validation
-│   ├── forecast_pipeline.py # Core forecasting ML logic
+│   ├── chat_service.py      # Conversational Agent logic & tool calling
+│   ├── orchestrator.py      # Multi-Agent Workflow (Explorer, ETL, Modeler)
+│   ├── sandbox.py           # Secure Python execution environment
+│   ├── storage.py           # DuckDB persistent storage layer
 │   └── data/               # Data files (CSV/Excel)
 ├── frontend/               # Vue.js frontend
 ├── requirements.txt        # Python dependencies

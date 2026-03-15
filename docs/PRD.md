@@ -4,7 +4,7 @@
 
 **Project Name:** Demand Forecasting Agent
 **Type:** Web Application (Frontend + Backend)
-**Core Functionality:** Predict SKU-store demand using historical sales data with automated feature engineering, model selection, and forecasting.
+**Core Functionality:** An Autonomous Data Scientist agent that dynamically explores raw files, writes custom Python ETL pipelines, trains ML models on the fly, and interacts via natural language.
 **Target Users:** Business analysts, inventory managers, supply chain teams.
 
 ---
@@ -68,13 +68,11 @@
 
 | Feature | Description |
 |---------|-------------|
-| **Data Ingestion** | Accept CSV uploads (sales, stock, promotions, store metadata). Validate schema. |
-| **Weekly Aggregation** | Aggregate daily data to weekly (Monday start). |
-| **False-Zero Correction** | Flag items with zero stock and zero sales, impute with category median. |
-| **Demand Segmentation** | Classify combos as smooth, intermittent, or lumpy based on CV and zero %. |
-| **Feature Engineering** | Compute expanded features including actual prices, promotional signals (is_promotional, promo_depth), and Categorical Target Encoding. |
-| **Model Training** | Time-series walk-forward validation. Route predictions to the lowest WMAPE model per segment (Naive, Ridge, XGBoost, LightGBM with Poisson objectives). |
-| **Inference** | Generate forecasts utilizing segment-routed best models with post-processing (bias correction + ROS blend). |
+| **Python Sandbox** | Secure environment executing generated Python code (`subprocess.run`). |
+| **Explorer Agent** | Reads raw files, identifies schemas, and writes an analysis markdown report. |
+| **Transformer Agent** | Autonomously writes pandas code to merge files, clean data, and engineer features. |
+| **Modeler Agent** | Autonomously writes scikit-learn/xgboost/lightgbm code to train models and output predictions. |
+| **DuckDB Storage** | Persists run metadata, logs, DataFrames, and ML Models across sessions. |
 | **Agent: Supervisor** | `gemini-3.1-flash-lite-preview` maintains memory and routes user requests. |
 | **Agent: Analyst** | `gemini-3.1-pro-preview` runs DuckDB SQL queries against memory and simulates promotional what-if scenarios. |
 
@@ -90,15 +88,15 @@
 ### 4.2 Data Flow
 
 ```
-1. Backend reads data files from /data folder (pre-loaded)
-2. User types "Run a forecast" into the chat
-3. Supervisor Agent routes intent to start pipeline
-4. Backend processes in stages:
-   - Aggregate → Features → Train → Predict → Post-process
-5. Frontend polls for status updates natively in chat
-6. User asks data question ("What is the forecast for SKU X?")
-7. Analyst Agent generates DuckDB SQL, queries Pandas DFs in RAM
-8. Analyst Agent returns synthesized markdown response
+1. User types "Run a forecast" into the chat
+2. Supervisor Agent delegates to Autonomous Orchestrator
+3. Explorer Agent writes Python to read raw files and output a schema report
+4. Transformer Agent writes Python to clean data and build a feature matrix
+5. Modeler Agent writes Python to train ML models and save predictions
+6. Real-time Python execution traces stream to the frontend Activity UI
+7. Results are persisted to DuckDB
+8. User asks data question ("What is the forecast for SKU X?")
+9. Analyst Agent generates DuckDB SQL, queries the data, and returns markdown
 ```
 
 **Data Files Location:** `/data/` folder (pre-loaded, no upload needed)
@@ -122,40 +120,7 @@
 | GET | `/api/history/{run_id}` | - | `{ run details, metrics }` |
 | GET | `/api/export/{run_id}` | - | CSV file |
 
-### 4.4 Data Schema Mapping
-
-Based on data analysis, map source files to required schema:
-
-| Required Column | Source File | Source Column |
-|-----------------|-------------|---------------|
-| store_id | SALES_MASTER | Store_ID |
-| sku_id | SALES_MASTER | SKU |
-| date | SALES_MASTER | date |
-| qty_sold | SALES_MASTER | Quantity |
-| stock_qty | SOH_MASTER | SOH |
-| discount_pct | SALES_MASTER | Markdown |
-| cluster_label | STORE_MASTER | Store Grade |
-| region | STORE_MASTER | County |
-| price_elasticity_score | - | Not available (skip) |
-
-### 4.5 Input Files (Pre-loaded in /data folder)
-
-> **Note:** Files are read from local `/data/` folder — no upload required.
-> Files have `.xls` extension but are actually CSV format.
-
-**Source files (auto-detected):**
-- `data/SALES_MASTER.xls` (actually CSV) — Sales transactions
-- `data/SOH_MASTER.xls` (actually CSV) — Stock on hand
-- `data/ITEM_MASTER.xls` (actually CSV) — Item catalog
-- `data/STORE_MASTER.csv` — Store metadata
-
-**Mapping to required schema:**
-- Use `Markdown` column from SALES_MASTER as promotion indicator (discount_pct)
-- Use `Store Grade` from STORE_MASTER as cluster_label
-- Use `County` from STORE_MASTER as region
-- `price_elasticity_score` not available — will use default/constant
-
-### 4.6 Output Schema
+### 4.4 Output Schema
 
 ```
 store_id, sku_id, combo_id, forecast_week_start, horizon, point_forecast, lower_80, upper_80, model_used, demand_segment, is_zero_forecast
