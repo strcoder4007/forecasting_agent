@@ -16,6 +16,9 @@
         <div v-if="isSqlCall" class="summary">Executing Query...</div>
         <SqlViewer v-if="isSqlCall" :sql="sqlQuery" />
         
+        <div v-else-if="isPythonCall" class="summary">Executing Python Code...</div>
+        <SqlViewer v-else-if="isPythonCall" :sql="pythonCode" />
+        
         <div v-else-if="isSimulateCall" class="summary">
           Simulating Promotion: SKU {{ step.args.sku_id }}, Store {{ step.args.store_id }} @ {{ (step.args.discount_pct * 100).toFixed(0) }}% off
         </div>
@@ -30,7 +33,10 @@
       
       <!-- Tool Results (Outputs) -->
       <div v-if="step.type === 'tool_result'">
-        <div class="result-text">{{ step.result }}</div>
+        <div v-if="isPythonResult" class="result-text python-result">
+          <pre>{{ step.result }}</pre>
+        </div>
+        <div v-else class="result-text">{{ step.result }}</div>
       </div>
     </div>
   </div>
@@ -78,8 +84,17 @@ export default {
     sqlQuery() {
       return this.step.args?.query || '';
     },
+    isPythonCall() {
+      return this.step.name === 'execute_python' && this.step.args && this.step.args.code;
+    },
+    pythonCode() {
+      return this.step.args?.code || '';
+    },
     isSimulateCall() {
       return this.step.name === 'simulate_promotion' && this.step.args;
+    },
+    isPythonResult() {
+      return this.step.name === 'execute_python';
     }
   },
   methods: {
@@ -179,5 +194,17 @@ export default {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
   overflow-x: auto;
+}
+
+.python-result pre {
+  margin: 0;
+  padding: 10px;
+  background: #1e1e1e;
+  color: #D4D4D4;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Monaco, Consolas, monospace;
+  font-size: 11px;
+  overflow-x: auto;
+  border-left: 3px solid #10B981;
 }
 </style>

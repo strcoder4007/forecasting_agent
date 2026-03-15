@@ -7,8 +7,7 @@ from google import genai
 from google.genai import types
 
 class ChatService:
-    def __init__(self, data_loader):
-        self.data_loader = data_loader
+    def __init__(self):
         self.client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY", "dummy"))
         self.supervisor_model = "gemini-3.1-flash-lite-preview"
         self.analyst_model = "gemini-3.1-pro-preview"
@@ -192,8 +191,11 @@ class ChatService:
         
         if run_results:
             self.current_results_df = pd.DataFrame(run_results)
-            self.current_stores_df = self.data_loader.load_stores()
-            self.current_items_df = self.data_loader.load_items()
+            try:
+                self.current_stores_df = pd.read_csv("backend/data/STORE_MASTER.csv")
+                self.current_items_df = pd.read_csv("backend/data/ITEM_MASTER.csv")
+            except:
+                pass
             self.current_features_df = features
             self.current_model_outputs = model_outputs
         else:

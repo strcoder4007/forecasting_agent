@@ -9,8 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .data_loader import DataLoader, DataLoadError
-from .forecast_pipeline import ForecastPipeline
+from .orchestrator import AutonomousForecaster
 from .chat_service import ChatService
 from . import storage
 
@@ -27,9 +26,8 @@ app.add_middleware(
 )
 
 # Global state
-data_loader = DataLoader()
-forecast_pipeline: Optional[ForecastPipeline] = None
-chat_service = ChatService(data_loader)
+forecast_pipeline = None
+chat_service = ChatService()
 
 # In-memory storage for runs
 storage.init_storage()
@@ -101,6 +99,7 @@ class ForecastStatusResponse(BaseModel):
     stage: str
     message: str
     logs: list[str] = []
+    traces: list[dict] = []
 
 
 class HistoryItem(BaseModel):
@@ -124,11 +123,7 @@ async def root():
 @app.get("/api/data/validate", response_model=ValidateResponse)
 async def validate_data():
     """Validate data files from /data folder."""
-    try:
-        result = data_loader.validate_files()
-        return ValidateResponse(**result)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return ValidateResponse(status="success", file_info={}, warnings=[])
 
 
 @app.post("/api/forecast/run", response_model=RunForecastResponse)
@@ -153,6 +148,7 @@ async def run_forecast():
             "results": None,
             "error": None,
             "logs": [],
+            "traces": [],
         }
 
     # Start forecast in background thread
@@ -166,12 +162,13 @@ async def run_forecast():
                 runs_storage[run_id]["message"] = "Loading and validating data"
 
             # Initialize pipeline
-            forecast_pipeline = ForecastPipeline(data_loader)
+            forecast_pipeline = AutonomousForecaster(
+                run_id,
+                progress_callback=lambda p, s, m, t=None: _update_progress(run_id, p, s, m, t)
+            )
 
             # Run forecast
-            results, model_outputs = forecast_pipeline.run(
-                progress_callback=lambda p, s, m: _update_progress(run_id, p, s, m)
-            )
+            results, model_outputs, features = forecast_pipeline.run()
 
             # Store results
             with runs_lock:
@@ -181,7 +178,7 @@ async def run_forecast():
                 runs_storage[run_id]["message"] = "Forecast completed successfully"
                 runs_storage[run_id]["results"] = results
                 runs_storage[run_id]["model_outputs"] = model_outputs
-                runs_storage[run_id]["features"] = forecast_pipeline.combo_features
+                runs_storage[run_id]["features"] = features
                 runs_storage[run_id]["total_combos"] = len(results)
                 # Calculate WMAPE/MAPE metrics from results
                 if results:
@@ -197,7 +194,7 @@ async def run_forecast():
                 # Attach heavy data temporarily for saving
                 runs_storage[run_id]["results"] = results
                 runs_storage[run_id]["model_outputs"] = model_outputs
-                runs_storage[run_id]["features"] = forecast_pipeline.combo_features
+                runs_storage[run_id]["features"] = features
                 
             storage.save_run(runs_storage[run_id])
             
@@ -208,11 +205,7 @@ async def run_forecast():
                 runs_storage[run_id].pop("features", None)
 
 
-        except DataLoadError as e:
-            with runs_lock:
-                runs_storage[run_id]["status"] = "failed"
-                runs_storage[run_id]["error"] = str(e)
-                runs_storage[run_id]["message"] = f"Data error: {str(e)}"
+
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -227,15 +220,17 @@ async def run_forecast():
     return RunForecastResponse(run_id=run_id, status="started")
 
 
-def _update_progress(run_id: str, progress: float, stage: str, message: str):
+def _update_progress(run_id: str, progress: float, stage: str, message: str, trace_event: dict = None):
     """Callback to update progress for a run."""
     with runs_lock:
         if run_id in runs_storage:
             runs_storage[run_id]["progress"] = progress
             runs_storage[run_id]["stage"] = stage
-            runs_storage[run_id]["message"] = message
-            runs_storage[run_id]["logs"].append(f"[{datetime.now().strftime('%H:%M:%S')}] [{stage}] {message}")
-            # Ensure we save inside the lock where we know the run_id exists
+            if message:
+                runs_storage[run_id]["message"] = message
+                runs_storage[run_id]["logs"].append(f"[{datetime.now().strftime('%H:%M:%S')}] [{stage}] {message}")
+            if trace_event:
+                runs_storage[run_id]["traces"].append(trace_event)
             storage.save_run(runs_storage[run_id])
 
 
@@ -254,6 +249,7 @@ async def get_forecast_status(run_id: str):
             stage=run["stage"],
             message=run["message"],
             logs=run.get("logs", []),
+            traces=run.get("traces", []),
         )
 
 

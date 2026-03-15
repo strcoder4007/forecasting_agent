@@ -45,13 +45,10 @@ export default {
     return {
       stages: [
         { id: 'starting', name: 'Initializing' },
-        { id: 'loading_data', name: 'Loading Data' },
-        { id: 'aggregating', name: 'Aggregating' },
-        { id: 'correcting', name: 'False-Zero Correction' },
-        { id: 'segmenting', name: 'Segmentation' },
-        { id: 'features', name: 'Feature Engineering' },
-        { id: 'training', name: 'Model Training' },
-        { id: 'predicting', name: 'Forecasting' },
+        { id: 'exploring', name: 'Data Exploration' },
+        { id: 'transforming', name: 'ETL & Feature Engineering' },
+        { id: 'training', name: 'AutoML Training' },
+        { id: 'synthesizing', name: 'Result Synthesis' },
         { id: 'done', name: 'Complete' }
       ]
     }

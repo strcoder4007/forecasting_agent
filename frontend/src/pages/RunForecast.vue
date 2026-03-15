@@ -156,6 +156,7 @@ export default {
       pollInterval: null,
       currentTrace: [],
       forecastLogCount: 0,
+      forecastTraceCount: 0,
       pipelineStage: '',
       pipelineStatus: 'idle'
     }
@@ -255,6 +256,7 @@ export default {
     async startForecast() {
       this.forecasting = true
       this.forecastLogCount = 0
+      this.forecastTraceCount = 0
       try {
         const res = await axios.post('/api/forecast/run')
         this.currentRunId = res.data.run_id
@@ -275,21 +277,37 @@ export default {
         const res = await axios.get(`/api/forecast/status/${this.currentRunId}`)
         const data = res.data
         
+        let hasNewTraces = false;
+        
+        if (data.traces && data.traces.length > this.forecastTraceCount) {
+          const newTraces = data.traces.slice(this.forecastTraceCount)
+          this.currentTrace.push(...newTraces)
+          this.forecastTraceCount = data.traces.length
+          hasNewTraces = true;
+        }
+        
         if (data.logs && data.logs.length > this.forecastLogCount) {
           const newLogs = data.logs.slice(this.forecastLogCount)
           newLogs.forEach(log => {
-            this.currentTrace.push({
-              type: 'info',
-              agent: 'system',
-              name: 'Pipeline',
-              message: log
-            })
+            // Only add logs if we don't have rich traces, or if it's a major stage change
+            if (!data.traces || data.traces.length === 0) {
+                this.currentTrace.push({
+                  type: 'info',
+                  agent: 'system',
+                  name: 'Pipeline',
+                  message: log
+                })
+                hasNewTraces = true;
+            }
           })
           this.forecastLogCount = data.logs.length
-          this.$nextTick(() => {
-            const el = this.$refs.traceBody
-            if (el) el.scrollTop = el.scrollHeight
-          })
+        }
+        
+        if (hasNewTraces) {
+            this.$nextTick(() => {
+              const el = this.$refs.traceBody
+              if (el) el.scrollTop = el.scrollHeight
+            })
         }
         
         this.pipelineStage = data.stage;
