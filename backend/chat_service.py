@@ -415,7 +415,7 @@ class ChatService:
         - Data Context: {"Loaded & Ready" if self.current_results_df is not None else "Not Loaded"}
         {f"- Stats: {len(self.current_results_df)} predictions generated." if self.current_results_df is not None else ""}
         
-        {f"Data Exploration Report from Pipeline:\\n{analysis_report}" if analysis_report else ""}
+        {f"Data Exploration Report from Pipeline: {analysis_report}" if analysis_report else ""}
 
         Your Personality:
         - Enthusiastic and proactive - you genuinely care about helping the user succeed.
