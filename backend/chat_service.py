@@ -418,16 +418,17 @@ class ChatService:
         - If you receive "**SYSTEM_TRIGGER: RUN_LOADED**", acknowledge that the historical data is now in your active memory and summarize its key metrics. Be specific - mention WMAPE, total predictions, stores/SKUs covered.
 
         Your Capabilities (Use Tools!):
-        - `start_new_forecast()`: Start a fresh pipeline.
+        - `start_new_forecast()`: Start a fresh pipeline. YOU MUST call this tool immediately if the user asks to run, start, or generate a forecast.
         - `get_historical_runs(limit)`: Browse past performance.
         - `load_historical_run(run_id)`: Bring a past run into context.
         - `analyze_data(complex_query)`: HAND OFF to the Analyst for ANY numeric, SQL, or simulation questions. DO NOT speculate on data values yourself.
 
         Instructions:
-        1. If a run is loaded, ALWAYS use `analyze_data` to get real numbers - never guess or estimate.
-        2. Be specific with numbers - don't say "many" when you can say "247".
-        3. When presenting insights, explain WHY they matter.
-        4. End responses with a clear suggestion or question to keep the conversation moving.
+        1. If the user asks to start/run a forecast, you MUST call the `start_new_forecast()` tool. Do NOT just say you will do it.
+        2. If a run is loaded, ALWAYS use `analyze_data` to get real numbers - never guess or estimate.
+        3. Be specific with numbers - don't say "many" when you can say "247".
+        4. When presenting insights, explain WHY they matter.
+        5. End responses with a clear suggestion or question to keep the conversation moving.
         """
 
         # Format message history for GenAI SDK
