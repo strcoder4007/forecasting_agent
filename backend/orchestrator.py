@@ -88,27 +88,76 @@ class AutonomousForecaster:
                     if fn.name == "execute_python":
                         code = fn.args.get("code", "")
                         
-                        trace_call = {
-                            "type": "tool_call",
-                            "agent": "system",
-                            "name": "execute_python",
-                            "args": {"code": code}
-                        }
-                        self._update(self.current_progress, self.current_stage, f"Executing Python code ({len(code)} bytes)...", trace_event=trace_call)
+                        # Self-healing loop: retry on error up to 3 times
+                        max_retries = 3
+                        last_error = None
                         
-                        import time
-                        start_time = time.time()
-                        result = execute_python(code)
-                        duration = time.time() - start_time
+                        for retry in range(max_retries):
+                            trace_call = {
+                                "type": "tool_call",
+                                "agent": "system",
+                                "name": "execute_python",
+                                "args": {"code": code}
+                            }
+                            retry_msg = f"Executing Python code ({len(code)} bytes)..." + (f" (retry {retry+1})" if retry > 0 else "")
+                            self._update(self.current_progress, self.current_stage, retry_msg, trace_event=trace_call)
+                            
+                            import time
+                            start_time = time.time()
+                            result = execute_python(code)
+                            duration = time.time() - start_time
+                            
+                            # Check if execution succeeded
+                            is_error = result.startswith("System Error") or result.startswith("Error:") or "Traceback" in result
+                            last_error = result if is_error else None
+                            
+                            trace_res = {
+                                "type": "tool_result" if not is_error else "error",
+                                "agent": "system",
+                                "name": "execute_python",
+                                "result": str(result)[:1000] + "..." if len(str(result)) > 1000 else str(result),
+                                "message": str(result)[:1000] + "..." if is_error else ""
+                            }
+                            status_msg = f"Python execution completed in {duration:.1f}s."
+                            if is_error and retry < max_retries - 1:
+                                status_msg += " Retrying with fixed code..."
+                            self._update(self.current_progress, self.current_stage, status_msg, trace_event=trace_res)
+                            
+                            if not is_error:
+                                # Success - break out of retry loop
+                                break
+                            
+                            if retry < max_retries - 1:
+                                # Error - feed back to LLM and ask for fix
+                                error_msg = f"Error detected: {result[:1500]}\n\nFix the code and retry. Common issues:\n- Import missing libraries\n- Fix variable names\n- Fix file paths\n- Fix syntax errors\n- Make sure pandas/numpy are imported"
+                                history.append(types.Content(role="user", parts=[types.Part.from_text(text=error_msg)]))
+                                
+                                # Get fixed code from LLM
+                                fix_response = self.client.models.generate_content(
+                                    model=model,
+                                    contents=history,
+                                    config=types.GenerateContentConfig(
+                                        system_instruction=sys_instruction,
+                                        tools=[execute_python, log_progress],
+                                        temperature=0.1,
+                                    )
+                                )
+                                
+                                if fix_response.function_calls:
+                                    # Get new code from fix attempt
+                                    history.append(fix_response.candidates[0].content)
+                                    for fix_fn in fix_response.function_calls:
+                                        if fix_fn.name == "execute_python":
+                                            code = fix_fn.args.get("code", "")
+                                            # Loop will retry with this new code
+                                            break
+                                else:
+                                    # No function call, LLM gave up
+                                    break
                         
-                        trace_res = {
-                            "type": "tool_result" if not result.startswith("System Error") else "error",
-                            "agent": "system",
-                            "name": "execute_python",
-                            "result": str(result)[:1000] + "..." if len(str(result)) > 1000 else str(result),
-                            "message": str(result)[:1000] + "..." if result.startswith("System Error") else ""
-                        }
-                        self._update(self.current_progress, self.current_stage, f"Python execution completed in {duration:.1f}s.", trace_event=trace_res)
+                        if last_error and retry == max_retries - 1:
+                            # Log that we gave up after max retries
+                            self._update(self.current_progress, self.current_stage, f"Warning: Code failed after {max_retries} attempts. Proceeding with last result.")
                         
                         function_responses.append(
                             types.Part.from_function_response(name=fn.name, response={"result": str(result)[:5000]})
