@@ -128,6 +128,8 @@
 import PipelineStepTracker from './PipelineStepTracker.vue'
 import ToolCallCard from './ToolCallCard.vue'
 
+const traceKeyMap = new WeakMap();
+
 export default {
   name: 'AgentActivity',
   components: { PipelineStepTracker, ToolCallCard },
@@ -227,8 +229,13 @@ export default {
       return false;
     },
     stepKey(step, idx) {
-      // Create a unique key based on step properties
-      return step._key || `${step.type}-${step.name || 'unknown'}-${idx}`;
+      if (step._key) return step._key;
+      let key = traceKeyMap.get(step);
+      if (!key) {
+        key = `trace-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        traceKeyMap.set(step, key);
+      }
+      return key;
     },
     isPairedByKey(step, idx) {
       // Check pairing using the validTraces array
