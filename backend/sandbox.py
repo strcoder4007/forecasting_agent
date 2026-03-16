@@ -4,6 +4,15 @@ import tempfile
 import sys
 import traceback
 
+# Pre-import common libraries to avoid NameError when LLM forgets
+COMMON_IMPORTS = """
+import pandas as pd
+import numpy as np
+import os
+import json
+from datetime import datetime, timedelta
+"""
+
 def execute_python(code: str, timeout: int = 120) -> str:
     """Executes a string of Python code in a temporary file and returns stdout and stderr.
     
@@ -25,6 +34,10 @@ def execute_python(code: str, timeout: int = 120) -> str:
         code = code[:-3]
         
     code = code.strip()
+
+    # Prepend common imports to avoid NameError
+    if not code.strip().startswith("import "):
+        code = COMMON_IMPORTS + "\n\n" + code
 
     # Create a temporary file to hold the script
     with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as temp_file:
