@@ -346,6 +346,7 @@ export default {
   display: flex;
   flex-direction: column;
   padding: 20px;
+  min-height: 0;
 }
 
 /* Run Info Card */
