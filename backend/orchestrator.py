@@ -212,21 +212,20 @@ Use execute_python to explore. Use log_progress to keep the user informed at eve
             self._update(35, "transforming", "Writing custom ETL scripts...")
             etl_sys = """You are an Autonomous ETL Engineer. Your job is to clean, transform, and prepare data for modeling.
 
-IMPORTANT REQUIREMENTS:
-1. Data is WEEKLY aggregated - use WEEK-based windows, NOT day-based
-2. MUST create these exact features:
-   - Lag features: lag_1, lag_2, lag_3, lag_4 (sales from 1-4 weeks ago)
-   - Rolling means: rolling_mean_4, rolling_mean_8, rolling_mean_12 (4/8/12 week rolling avg)
-   - Rolling std: rolling_std_4
-   - Date features: week_of_year (1-52), day_of_week (0-6)
-   - Month flags: is_month_start, is_month_end
-   - Lag ratio: qty_sold_lag1_ratio = lag_1 / rolling_mean_4
+Your goal is to create features that help predict future sales. ADAPT to the data you find.
+
+GUIDELINES (not prescriptions - let the data guide you):
+1. Data is WEEKLY aggregated - create features based on weeks
+2. LAG features: Capture recent history (how many lags? let the data decide)
+3. ROLLING STATS: Capture trends (what windows make sense? let the data decide)
+4. DATE FEATURES: Extract temporal patterns (week, month, quarter)
+5. Let the data guide feature engineering - don't hardcode names
 
 IMPORTANT - You MUST use the log_progress tool to log every step:
 - Before loading data: "Loading sales data from CSV..."
 - Before transformations: "Applying data cleaning: handling negative quantities..."
 - Before aggregations: "Aggregating daily sales to weekly level..."
-- Before feature engineering: "Creating WEEKLY lag and rolling features..."
+- Before feature engineering: "Creating lag and rolling features based on data patterns..."
 - Before saving: "Saving processed features to parquet file..."
 
 Always call log_progress before execute_python. Be descriptive about what you're doing."""
@@ -234,17 +233,13 @@ Always call log_progress before execute_python. Be descriptive about what you're
 1. Load data from '{self.data_dir}/'
 2. Clean the data (handle negatives, missing values, etc.)
 3. Aggregate sales to weekly level
-4. Engineer these EXACT features (use these exact names):
-   - lag_1, lag_2, lag_3, lag_4: Sales from 1-4 weeks ago
-   - rolling_mean_4, rolling_mean_8, rolling_mean_12: Rolling 4/8/12 week averages
-   - rolling_std_4: Rolling 4-week standard deviation
-   - week_of_year: 1-52 (for seasonality)
-   - day_of_week: 0-6
-   - is_month_start, is_month_end: Month boundary flags
-   - qty_sold_lag1_ratio: lag_1 / rolling_mean_4
+4. Engineer features that capture historical patterns - ADAPT to the data:
+   - Create lag features (how many? let data decide)
+   - Create rolling statistics (mean, std) - what windows work best?
+   - Extract date components for seasonality
 5. Save to '{self.features_path}'
 
-Required output columns: combo_id, store_id, sku_id, week_start, qty_sold, lag_1, lag_2, lag_3, lag_4, rolling_mean_4, rolling_mean_8, rolling_mean_12, rolling_std_4, week_of_year, day_of_week, is_month_start, is_month_end, qty_sold_lag1_ratio
+The key is ADAPTABILITY - let the data guide feature engineering. Save a flexible feature set.
 
 Use log_progress to describe each step. Save the final DataFrame to parquet format."""
             etl_summary = self._call_agent(etl_prompt, etl_sys, self.pro_model, max_turns=6)
@@ -260,33 +255,36 @@ Use log_progress to describe each step. Save the final DataFrame to parquet form
             self._update(60, "training", "Training models dynamically...")
             model_sys = """You are an Autonomous AutoML Agent. Your job is to train machine learning models and generate forecasts.
 
-MODEL SELECTION RULES (MUST FOLLOW):
-- If validation WMAPE < 0.1: Use LightGBM (for smooth demand)
-- If validation WMAPE 0.1-0.3: Use Ridge Regression (for intermittent demand)
-- If validation WMAPE > 0.3 OR insufficient data: Use Seasonal Naive (last year's same week)
+Your goal is to build the best model for the data. ADAPT to what works.
 
-ENSEMBLE: Average LightGBM + Ridge predictions, weighted by inverse WMAPE
+GUIDELINES (not rules - let WMAPE guide you):
+- Use WMAPE (Weighted Mean Absolute Percentage Error) to evaluate models
+- Simple models often work better for sparse/intermittent data
+- Complex models (LightGBM) work better for rich/smooth data
+- If WMAPE is high, try simpler approaches
+- Let the data guide model choice
 
 IMPORTANT - You MUST use log_progress to log every step:
 - Before loading features: "Loading feature matrix from parquet..."
-- Before training: "Training LightGBM model with X features..."
-- During evaluation: "Evaluating model performance on validation set..."
-- Before predictions: "Generating forecasts for next week..."
+- Before training: "Training model..."
+- During evaluation: "Evaluating model performance..."
+- Before predictions: "Generating forecasts..."
 - Before saving: "Saving predictions to CSV..."
 
 Always call log_progress before execute_python. Describe what model you're training and the metrics."""
             model_prompt = f"""Load '{self.features_path}'. Train model(s) to forecast next week's sales per combo_id.
 
-MODEL SELECTION (follow these rules):
-1. First calculate WMAPE on validation set (last 4 weeks)
-2. If WMAPE < 0.1: Use LightGBM
-3. If WMAPE 0.1-0.3: Use Ridge Regression  
-4. If WMAPE > 0.3 or insufficient data: Use Seasonal Naive
-5. Optional: Ensemble LightGBM + Ridge weighted by inverse WMAPE
+Your job is to build the best forecasting model. ADAPT to the data:
 
-Required output columns: store_id, sku_id, combo_id, forecast_week_start, horizon, point_forecast, lower_80, upper_80, model_used, demand_segment, is_zero_forecast, wmape, mape.
+1. Start with a simple baseline (e.g., last week's sales)
+2. Calculate WMAPE on validation set (last 4 weeks)
+3. If WMAPE is high, try simpler models
+4. If WMAPE is low, try more complex models
+5. Let the data guide model selection
 
-Use log_progress to describe each step. Save predictions to '{self.results_path}'."""
+Save predictions to '{self.results_path}'.
+
+Use log_progress to describe each step."""
             model_summary = self._call_agent(model_prompt, model_sys, self.pro_model, max_turns=6)
             
             # Check if agent actually failed (not just "Error" in metric names like MAPE)
