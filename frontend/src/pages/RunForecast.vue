@@ -174,7 +174,9 @@ export default {
       this.currentTrace = [];
       this.pipelineStatus = 'completed';
       this.pipelineStage = 'done';
-      await this.loadResultsIfMissing()
+      await this.loadResultsIfMissing();
+      // Fetch traces for the historical run
+      await this.loadTracesForRun(this.currentRunId);
     }
   },
   beforeUnmount() {
@@ -386,6 +388,20 @@ export default {
         }
       } catch (e) {
         console.error('Failed to cache results:', e)
+      }
+    },
+    async loadTracesForRun(runId) {
+      if (!runId) return
+      try {
+        const res = await axios.get(`/api/forecast/status/${runId}`)
+        const data = res.data
+        if (data.traces && data.traces.length > 0) {
+          this.currentTrace = data.traces;
+          this.forecastTraceCount = data.traces.length;
+          console.log('Loaded', data.traces.length, 'traces for run', runId);
+        }
+      } catch (e) {
+        console.error('Failed to load traces:', e)
       }
     },
     formatStage(stage) {

@@ -77,8 +77,14 @@ def save_run(run_dict):
                 
             # Save traces
             conn.execute("DELETE FROM run_traces WHERE run_id=?", [run_dict["run_id"]])
-            for trace in run_dict.get("traces", []):
-                conn.execute("INSERT INTO run_traces VALUES (?, ?)", [run_dict["run_id"], json.dumps(trace)])
+            traces = run_dict.get("traces", [])
+            print(f"[STORAGE] Saving {len(traces)} traces for run {run_dict['run_id'][:8]}")
+            for trace in traces:
+                try:
+                    conn.execute("INSERT INTO run_traces VALUES (?, ?)", [run_dict["run_id"], json.dumps(trace)])
+                except Exception as e:
+                    print(f"[STORAGE] Error saving trace: {e}")
+                    print(f"[STORAGE] Trace: {trace}")
                 
             # If completed, save heavy data
             if run_dict["status"] == "completed":
@@ -127,7 +133,10 @@ def load_all_runs_metadata():
                 
                 # Load traces
                 traces_df = conn.execute("SELECT trace_json FROM run_traces WHERE run_id=?", [run_id]).df()
-                runs[run_id]["traces"] = [json.loads(t) for t in traces_df["trace_json"].tolist()]
+                traces = [json.loads(t) for t in traces_df["trace_json"].tolist()] if len(traces_df) > 0 else []
+                runs[run_id]["traces"] = traces
+                if traces:
+                    print(f"[STORAGE] Loaded {len(traces)} traces for run {run_id[:8]}")
         finally:
             conn.close()
     return runs
@@ -157,6 +166,19 @@ def load_run_data(run_id):
             
     return results, features, model_outputs
 
+def load_run_traces(run_id):
+    """Load traces for a specific run from DuckDB."""
+    traces = []
+    with db_lock:
+        conn = duckdb.connect(DB_PATH)
+        try:
+            traces_df = conn.execute("SELECT trace_json FROM run_traces WHERE run_id=?", [run_id]).df()
+            if len(traces_df) > 0:
+                traces = [json.loads(t) for t in traces_df["trace_json"].tolist()]
+        finally:
+            conn.close()
+    return traces
+
 def delete_run_data(run_id):
     """Deletes all data associated with a run."""
     with db_lock:
@@ -171,7 +193,7 @@ def delete_run_data(run_id):
             conn.execute(f"DROP TABLE IF EXISTS {feat_table}")
         finally:
             conn.close()
-        
+
         model_path = os.path.join(MODELS_DIR, f"{run_id}.joblib")
         if os.path.exists(model_path):
             os.remove(model_path)

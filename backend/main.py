@@ -198,7 +198,13 @@ async def run_forecast():
                 runs_storage[run_id]["features"] = features
                 
             storage.save_run(runs_storage[run_id])
-            
+
+            # Reload traces from DB to ensure they're available for API queries
+            # (traces were saved during execution but we need to re-read them)
+            with runs_lock:
+                traces_from_db = storage.load_run_traces(run_id)
+                runs_storage[run_id]["traces"] = traces_from_db
+
             # Remove heavy data from RAM after saving to DuckDB
             with runs_lock:
                 runs_storage[run_id].pop("results", None)

@@ -113,10 +113,10 @@
       <div class="feed-container">
         <TransitionGroup name="card-list">
           <ToolCallCard
-            v-for="(step, idx) in trace"
-            :key="idx"
+            v-for="(step, idx) in validTraces"
+            :key="stepKey(step, idx)"
             :step="step"
-            :isPaired="isPaired(idx)"
+            :isPaired="isPairedByKey(step, idx)"
           />
         </TransitionGroup>
       </div>
@@ -138,6 +138,10 @@ export default {
     pipelineStatus: { type: String, default: 'idle' }
   },
   computed: {
+    validTraces() {
+      // Filter out null/undefined/invalid trace items
+      return this.trace.filter(step => step && typeof step === 'object' && step.type);
+    },
     agentTokens() {
       const usage = {
         supervisor: { input: 0, output: 0, total: 0 },
@@ -217,6 +221,22 @@ export default {
         const current = this.trace[idx];
         const next = this.trace[idx + 1];
         if (current.type === 'tool_call' && next.type === 'tool_result') {
+          return true;
+        }
+      }
+      return false;
+    },
+    stepKey(step, idx) {
+      // Create a unique key based on step properties
+      return step._key || `${step.type}-${step.name || 'unknown'}-${idx}`;
+    },
+    isPairedByKey(step, idx) {
+      // Check pairing using the validTraces array
+      const traces = this.validTraces;
+      if (idx < traces.length - 1) {
+        const current = traces[idx];
+        const next = traces[idx + 1];
+        if (current && next && current.type === 'tool_call' && next.type === 'tool_result') {
           return true;
         }
       }
