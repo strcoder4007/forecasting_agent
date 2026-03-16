@@ -201,8 +201,8 @@ Your tasks:
 Use execute_python to explore. Use log_progress to keep the user informed at every step. Return a detailed markdown report of your findings."""
             self.analysis_report = self._call_agent(explorer_prompt, explorer_sys, self.lite_model, max_turns=6)
             
-            # Check if agent failed
-            if "Agent failed" in self.analysis_report or "Error" in self.analysis_report:
+            # Check if agent actually failed (not just "Error" in metric names like MAPE)
+            if "Agent failed" in self.analysis_report:
                 raise Exception(f"Data Explorer Agent failed: {self.analysis_report}")
             
             self._update(25, "exploring", "✅ Data exploration completed.")
@@ -232,8 +232,8 @@ Required output columns: combo_id, store_id, sku_id, week_start, qty_sold, and f
 Use log_progress to describe each step. Save the final DataFrame to parquet format."""
             etl_summary = self._call_agent(etl_prompt, etl_sys, self.pro_model, max_turns=6)
             
-            # Check if agent failed
-            if "Agent failed" in str(etl_summary) or "Error" in str(etl_summary):
+            # Check if agent actually failed
+            if "Agent failed" in str(etl_summary):
                 raise Exception(f"ETL Agent failed: {etl_summary}")
             
             self._update(50, "transforming", "✅ ETL pipeline completed.")
@@ -258,8 +258,8 @@ Required output columns: store_id, sku_id, combo_id, forecast_week_start, horizo
 Use log_progress to describe each step. Save predictions to '{self.results_path}'."""
             model_summary = self._call_agent(model_prompt, model_sys, self.pro_model, max_turns=6)
             
-            # Check if agent failed
-            if "Agent failed" in str(model_summary) or "Error" in str(model_summary):
+            # Check if agent actually failed (not just "Error" in metric names like MAPE)
+            if "Agent failed" in str(model_summary):
                 raise Exception(f"Model Agent failed: {model_summary}")
             
             self._update(85, "training", "✅ Model training completed.")
