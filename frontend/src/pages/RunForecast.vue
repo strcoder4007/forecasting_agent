@@ -181,6 +181,9 @@ export default {
   },
   beforeUnmount() {
     if (this.pollInterval) clearInterval(this.pollInterval)
+    // Clean up traces to prevent unmount errors
+    this.currentTrace = []
+    this.forecastTraceCount = 0
   },
   methods: {
     adjustTextarea(e) {
