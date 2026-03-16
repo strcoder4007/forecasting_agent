@@ -221,6 +221,11 @@ export default {
         this.$nextTick(() => { if (this.$refs.chatInput) this.$refs.chatInput.style.height = 'auto' })
       }
 
+      // Ensure messages is always an array
+      if (!this.messages || !Array.isArray(this.messages)) {
+        this.messages = []
+      }
+
       this.messages.push({ 
         role: 'user', 
         type: 'text', 
@@ -234,7 +239,7 @@ export default {
 
       try {
         const payload = { 
-          messages: this.messages.filter(m => m.type === 'text').map(m => ({
+          messages: (this.messages || []).filter(m => m && m.type === 'text').map(m => ({
             role: m.role,
             content: m.content
           }))
