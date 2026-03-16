@@ -1,5 +1,6 @@
 """FastAPI application for Demand Forecasting Agent."""
 import uuid
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -12,6 +13,9 @@ from pydantic import BaseModel
 from .orchestrator import AutonomousForecaster
 from .chat_service import ChatService
 from . import storage
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(title="Demand Forecasting Agent", version="1.0.0")
@@ -36,7 +40,6 @@ runs_lock = threading.Lock()
 
 # Define data directory
 DATA_DIR = Path(__file__).parent / "data"
-
 
 # Pydantic models
 class ValidateResponse(BaseModel):
@@ -74,8 +77,17 @@ async def chat_with_agent(request: ChatRequest):
             if request.run_id in runs_storage:
                 run = runs_storage[request.run_id]
                 if run["status"] == "completed":
-                    # Load heavy data from DuckDB just for this chat session
-                    results, features, model_outputs = storage.load_run_data(request.run_id)
+                    # Lazy load heavy data if not already cached
+                    if run.get("results") is None:
+                        logger.info(f"Lazy loading heavy data for run {request.run_id}")
+                        run_results, run_features, run_model_outputs = storage.load_run_data(request.run_id)
+                        run["results"] = run_results
+                        run["features"] = run_features
+                        run["model_outputs"] = run_model_outputs
+                    
+                    results = run.get("results")
+                    features = run.get("features")
+                    model_outputs = run.get("model_outputs")
 
     # Convert Pydantic messages to dict
     messages = [{"role": m.role, "content": m.content} for m in request.messages]
@@ -115,6 +127,16 @@ class HistoryItem(BaseModel):
 class HistoryResponse(BaseModel):
     runs: list[HistoryItem]
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint to verify API and DuckDB connectivity."""
+    try:
+        conn = storage.get_conn()
+        conn.execute("SELECT 1")
+        return {"status": "ok", "database": "connected"}
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {"status": "error", "database": "disconnected", "details": str(e)}
 
 @app.get("/")
 async def root():
@@ -161,6 +183,9 @@ async def run_forecast():
                 runs_storage[run_id]["status"] = "running"
                 runs_storage[run_id]["stage"] = "loading_data"
                 runs_storage[run_id]["message"] = "Loading and validating data"
+            
+            # Save initial state to DB
+            storage.save_run(runs_storage[run_id])
 
             # Initialize pipeline
             forecast_pipeline = AutonomousForecaster(
@@ -180,7 +205,10 @@ async def run_forecast():
                 runs_storage[run_id]["results"] = results
                 runs_storage[run_id]["model_outputs"] = model_outputs
                 runs_storage[run_id]["features"] = features
-                runs_storage[run_id]["total_combos"] = len(results)
+                runs_storage[run_id]["total_combos"] = len(results) if results else 0
+                # Store analysis report for chat context
+                runs_storage[run_id]["analysis_report"] = model_outputs.get("analysis_report", "") if model_outputs else ""
+                
                 # Calculate WMAPE/MAPE metrics from results
                 if results:
                     wmape_values = [r.get("wmape", 0) for r in results if "wmape" in r]
@@ -192,34 +220,21 @@ async def run_forecast():
                         sum(mape_values) / len(mape_values) if mape_values else 0
                     )
                 
-                # Attach heavy data temporarily for saving
-                runs_storage[run_id]["results"] = results
-                runs_storage[run_id]["model_outputs"] = model_outputs
-                runs_storage[run_id]["features"] = features
-                
+            # Save the final successfully completed state with data to DB
             storage.save_run(runs_storage[run_id])
 
             # Reload traces from DB to ensure they're available for API queries
-            # (traces were saved during execution but we need to re-read them)
             with runs_lock:
                 traces_from_db = storage.load_run_traces(run_id)
                 runs_storage[run_id]["traces"] = traces_from_db
 
-            # Remove heavy data from RAM after saving to DuckDB
-            with runs_lock:
-                runs_storage[run_id].pop("results", None)
-                runs_storage[run_id].pop("model_outputs", None)
-                runs_storage[run_id].pop("features", None)
-
-
-
         except Exception as e:
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error in forecast run {run_id}: {e}", exc_info=True)
             with runs_lock:
                 runs_storage[run_id]["status"] = "failed"
                 runs_storage[run_id]["error"] = repr(e)
                 runs_storage[run_id]["message"] = f"Unexpected error ({type(e).__name__}): {str(e)}"
+            storage.save_run(runs_storage[run_id])
 
     thread = threading.Thread(target=run_forecast_thread, daemon=True)
     thread.start()
@@ -240,8 +255,8 @@ def _update_progress(run_id: str, progress: float, stage: str, message: str, tra
                 runs_storage[run_id]["logs"].append(f"[{datetime.now().strftime('%H:%M:%S')}] [{stage}] {message}")
             if trace_event:
                 runs_storage[run_id]["traces"].append(trace_event)
-            storage.save_run(runs_storage[run_id])
-
+            # We explicitly do not save to DB here to avoid unnecessary DB writes during frequent updates.
+            # State is captured in memory and saved entirely at the end of the run.
 
 
 @app.post("/api/forecast/cancel/{run_id}")
@@ -261,7 +276,11 @@ async def get_forecast_status(run_id: str):
             raise HTTPException(status_code=404, detail="Run not found")
 
         run = runs_storage[run_id]
-        summary = run.get("model_outputs", {}).get("final_summary", None) if run.get("model_outputs") else None
+        
+        summary = None
+        if run.get("model_outputs"):
+            summary = run["model_outputs"].get("final_summary", None)
+            
         return ForecastStatusResponse(
             run_id=run["run_id"],
             status=run["status"],
@@ -287,6 +306,13 @@ async def get_forecast_results(run_id: str):
                 status_code=400,
                 detail=f"Run not completed yet. Status: {run['status']}",
             )
+
+        if run.get("results") is None:
+            logger.info(f"Lazy loading heavy data for run {run_id}")
+            run_results, run_features, run_model_outputs = storage.load_run_data(run_id)
+            run["results"] = run_results
+            run["features"] = run_features
+            run["model_outputs"] = run_model_outputs
 
         results = run.get("results", [])
         if not results:
@@ -352,7 +378,6 @@ async def delete_run(run_id: str):
 @app.get("/api/export/{run_id}")
 async def export_forecast(run_id: str):
     """Export forecast results as CSV."""
-    import csv
     from fastapi.responses import StreamingResponse
 
     with runs_lock:
@@ -366,9 +391,16 @@ async def export_forecast(run_id: str):
                 detail=f"Run not completed yet. Status: {run['status']}",
             )
 
-    results, _, _ = storage.load_run_data(run_id)
-    if not results:
-        raise HTTPException(status_code=404, detail="No results to export")
+        if run.get("results") is None:
+            logger.info(f"Lazy loading heavy data for export for run {run_id}")
+            run_results, run_features, run_model_outputs = storage.load_run_data(run_id)
+            run["results"] = run_results
+            run["features"] = run_features
+            run["model_outputs"] = run_model_outputs
+
+        results = run.get("results")
+        if not results:
+            raise HTTPException(status_code=404, detail="No results to export")
 
     # Generate CSV
     def generate_csv():
@@ -388,5 +420,4 @@ async def export_forecast(run_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8000)

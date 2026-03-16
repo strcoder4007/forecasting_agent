@@ -148,13 +148,21 @@ class ChatService:
         if self.current_results_df is None:
             return "Please load a completed forecast run first."
 
-        analyst_system = """
+        # Get analysis report for analyst context
+        analysis_report = ""
+        if self.current_model_outputs and self.current_model_outputs.get("analysis_report"):
+            analysis_report = self.current_model_outputs.get("analysis_report", "")
+        
+        analyst_system = f"""
         You are an expert Data Analyst AI. Your job is to answer the user's question by querying data.
         
         Available Data (use execute_sql tool):
         - results_df: point_forecast, lower_80, upper_80, model_used, demand_segment, is_zero_forecast, wmape, mape, store_id, sku_id.
         - stores_df: store_id, cluster_label, region.
         - items_df: sku_id, category, price.
+        
+        Data Exploration Report (for context):
+        {analysis_report if analysis_report else "No exploration report available."}
         
         Instructions:
         1. Formulate a DuckDB SQL query to join/filter the data appropriately.
@@ -393,6 +401,11 @@ class ChatService:
             # Return synthesis immediately - no need for LLM call
             return synthesis, "FORECAST_COMPLETED", current_run_id, self.trace
 
+        # Get analysis report if available
+        analysis_report = ""
+        if self.current_model_outputs and self.current_model_outputs.get("analysis_report"):
+            analysis_report = self.current_model_outputs.get("analysis_report", "")
+        
         supervisor_system = f"""
         You are the **Lead Forecast Supervisor**, the intelligent conductor of this Supply Chain AI. 
         Your goal is to guide the user through the forecasting lifecycle with clarity, proactivity, and professional expertise.
@@ -401,6 +414,8 @@ class ChatService:
         - Active Run ID: {current_run_id if current_run_id else "None"}
         - Data Context: {"Loaded & Ready" if self.current_results_df is not None else "Not Loaded"}
         {f"- Stats: {len(self.current_results_df)} predictions generated." if self.current_results_df is not None else ""}
+        
+        {f"Data Exploration Report from Pipeline:\\n{analysis_report}" if analysis_report else ""}
 
         Your Personality:
         - Enthusiastic and proactive - you genuinely care about helping the user succeed.

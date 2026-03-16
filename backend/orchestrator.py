@@ -1,10 +1,11 @@
 import os
-import json
-import traceback
 import pandas as pd
+import logging
 from google import genai
 from google.genai import types
 from .sandbox import execute_python
+
+logger = logging.getLogger(__name__)
 
 class AutonomousForecaster:
     def __init__(self, run_id: str, progress_callback):
@@ -208,8 +209,17 @@ Use log_progress to describe each step. Save predictions to '{self.results_path}
 
             features = pd.read_parquet(self.features_path) if os.path.exists(self.features_path) else None
 
+            # Clean up temporary files
+            try:
+                if os.path.exists(self.results_path):
+                    os.remove(self.results_path)
+                if os.path.exists(self.features_path):
+                    os.remove(self.features_path)
+            except Exception as e:
+                logger.warning(f"Failed to cleanup temp files: {e}")
+
             self._update(100, "done", "Forecast complete!")
-            return results, {"feature_cols": list(features.columns) if features is not None else [], "final_summary": ""}, features
+            return results, {"feature_cols": list(features.columns) if features is not None else [], "final_summary": "", "analysis_report": self.analysis_report}, features
         except Exception as e:
             self._update(self.current_progress, "failed", f"Orchestration failed: {str(e)}")
             raise e
