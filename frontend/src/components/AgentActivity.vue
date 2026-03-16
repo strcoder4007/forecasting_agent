@@ -32,85 +32,88 @@
     </div>
 
     <div class="activity-body" ref="activityBody">
-      <!-- Run ID Header -->
-      <Transition name="fade-slide">
-        <div v-if="currentRunId" class="run-info-card" :class="pipelineStatus">
-          <div class="run-info-content">
-            <div class="run-info-left">
-              <div class="run-icon" :class="pipelineStatus">
-                <svg v-if="pipelineStatus === 'completed'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18">
-                  <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-                <svg v-else-if="pipelineStatus === 'failed'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-                <svg v-else-if="pipelineStatus === 'running'" class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                  <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
-                  <path d="M12 2a10 10 0 0 1 10 10"></path>
-                </svg>
-                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-                  <circle cx="12" cy="12" r="10"></circle>
-                </svg>
+      <!-- Fixed Section (doesn't scroll) -->
+      <div class="activity-fixed">
+        <!-- Run ID Header -->
+        <Transition name="fade-slide">
+          <div v-if="currentRunId" class="run-info-card" :class="pipelineStatus">
+            <div class="run-info-content">
+              <div class="run-info-left">
+                <div class="run-icon" :class="pipelineStatus">
+                  <svg v-if="pipelineStatus === 'completed'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  <svg v-else-if="pipelineStatus === 'failed'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                  <svg v-else-if="pipelineStatus === 'running'" class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                    <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+                    <path d="M12 2a10 10 0 0 1 10 10"></path>
+                  </svg>
+                  <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                    <circle cx="12" cy="12" r="10"></circle>
+                  </svg>
+                </div>
+                <div class="run-details">
+                  <div class="run-label">Run ID</div>
+                  <div class="run-id-value">{{ currentRunId.substring(0, 8) }}</div>
+                </div>
               </div>
-              <div class="run-details">
-                <div class="run-label">Run ID</div>
-                <div class="run-id-value">{{ currentRunId.substring(0, 8) }}</div>
+              <div class="run-info-right">
+                <span class="status-badge" :class="pipelineStatus">
+                  <span v-if="pipelineStatus === 'running'" class="pulse-dot"></span>
+                  {{ pipelineStatus }}
+                </span>
               </div>
-            </div>
-            <div class="run-info-right">
-              <span class="status-badge" :class="pipelineStatus">
-                <span v-if="pipelineStatus === 'running'" class="pulse-dot"></span>
-                {{ pipelineStatus }}
-              </span>
             </div>
           </div>
-        </div>
-      </Transition>
+        </Transition>
 
-      <!-- Pipeline Tracker -->
-      <Transition name="fade-slide">
-        <PipelineStepTracker
-          v-if="pipelineStatus !== 'idle' || pipelineStage !== ''"
-          :currentStage="pipelineStage"
-          :status="pipelineStatus"
-        />
-      </Transition>
+        <!-- Pipeline Tracker -->
+        <Transition name="fade-slide">
+          <PipelineStepTracker
+            v-if="pipelineStatus !== 'idle' || pipelineStage !== ''"
+            :currentStage="pipelineStage"
+            :status="pipelineStatus"
+          />
+        </Transition>
 
-      <!-- Empty State -->
-      <div v-if="trace.length === 0 && pipelineStatus === 'idle'" class="empty-state">
-        <div class="empty-illustration">
-          <svg viewBox="0 0 120 120" fill="none" width="120" height="120">
-            <!-- Background circle -->
-            <circle cx="60" cy="60" r="50" fill="#F5F3FF" stroke="#DDD6FE" stroke-width="2"/>
-            <!-- Clock face -->
-            <circle cx="60" cy="60" r="35" fill="none" stroke="#C4B5FD" stroke-width="1.5"/>
-            <!-- Hour hand -->
-            <line x1="60" y1="60" x2="60" y2="40" stroke="#7C3AED" stroke-width="2.5" stroke-linecap="round"/>
-            <!-- Minute hand -->
-            <line x1="60" y1="60" x2="75" y2="55" stroke="#7C3AED" stroke-width="2" stroke-linecap="round"/>
-            <!-- Center dot -->
-            <circle cx="60" cy="60" r="4" fill="#7C3AED"/>
-            <!-- Top indicator -->
-            <circle cx="60" cy="22" r="3" fill="#A78BFA"/>
-          </svg>
-        </div>
-        <h3 class="empty-title">No Activity Yet</h3>
-        <p class="empty-description">
-          Start a forecast or ask a question to see real-time execution logs and agent activity.
-        </p>
-        <div class="empty-hint">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="16" x2="12" y2="12"></line>
-            <line x1="12" y1="8" x2="12.01" y2="8"></line>
-          </svg>
-          Watch the pipeline progress here
+        <!-- Empty State -->
+        <div v-if="trace.length === 0 && pipelineStatus === 'idle'" class="empty-state">
+          <div class="empty-illustration">
+            <svg viewBox="0 0 120 120" fill="none" width="120" height="120">
+              <!-- Background circle -->
+              <circle cx="60" cy="60" r="50" fill="#F5F3FF" stroke="#DDD6FE" stroke-width="2"/>
+              <!-- Clock face -->
+              <circle cx="60" cy="60" r="35" fill="none" stroke="#C4B5FD" stroke-width="1.5"/>
+              <!-- Hour hand -->
+              <line x1="60" y1="60" x2="60" y2="40" stroke="#7C3AED" stroke-width="2.5" stroke-linecap="round"/>
+              <!-- Minute hand -->
+              <line x1="60" y1="60" x2="75" y2="55" stroke="#7C3AED" stroke-width="2" stroke-linecap="round"/>
+              <!-- Center dot -->
+              <circle cx="60" cy="60" r="4" fill="#7C3AED"/>
+              <!-- Top indicator -->
+              <circle cx="60" cy="22" r="3" fill="#A78BFA"/>
+            </svg>
+          </div>
+          <h3 class="empty-title">No Activity Yet</h3>
+          <p class="empty-description">
+            Start a forecast or ask a question to see real-time execution logs and agent activity.
+          </p>
+          <div class="empty-hint">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            Watch the pipeline progress here
+          </div>
         </div>
       </div>
 
-      <!-- Activity Feed -->
-      <div class="feed-container" ref="feedContainer">
+      <!-- Scrollable Feed -->
+      <div class="activity-scroll" ref="feedContainer">
         <TransitionGroup name="card-list">
           <ToolCallCard
             v-for="(step, idx) in validTraces"
@@ -347,6 +350,20 @@ export default {
   flex-direction: column;
   padding: 20px;
   min-height: 0;
+  gap: 12px;
+}
+
+/* Fixed section - doesn't scroll */
+.activity-fixed {
+  flex-shrink: 0;
+}
+
+/* Scrollable feed container */
+.activity-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scroll-behavior: smooth;
 }
 
 /* Run Info Card */
@@ -524,14 +541,7 @@ export default {
   border-radius: 16px;
 }
 
-.feed-container {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  scroll-behavior: smooth;
-}
+/* Feed container styles moved to activity-scroll */
 
 /* Transitions */
 .fade-slide-enter-active,

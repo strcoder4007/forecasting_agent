@@ -243,47 +243,40 @@ export default {
 
 <style scoped>
 .tool-card {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  margin-bottom: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  background: var(--color-bg-card, #fff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 12px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   overflow: hidden;
-  animation: slideIn 0.3s ease-out forwards;
-  transition: all 0.2s ease;
+  animation: slideIn 0.2s ease-out forwards;
+  transition: all 0.15s ease;
 }
 
 .tool-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
+  transform: translateY(-1px);
 }
 
-/* Card type backgrounds - subtle tinted backgrounds */
+/* Left border accent by type */
 .tool-card.type-tool-call {
-  border-color: #DDD6FE;
-  background: linear-gradient(135deg, #FAFAFF 0%, #F5F3FF 100%);
+  border-left: 3px solid #8B5CF6;
 }
 
 .tool-card.type-tool-result {
-  border-color: #A7F3D0;
-  background: linear-gradient(135deg, #FAFAFF 0%, #F0FDF4 100%);
+  border-left: 3px solid #10B981;
 }
 
 .tool-card.type-error {
-  border-color: #FECACA;
-  background: linear-gradient(135deg, #FFFAFA 0%, #FEF2F2 100%);
+  border-left: 3px solid #EF4444;
 }
 
 .tool-card.type-info {
-  border-color: #BAE6FD;
-  background: linear-gradient(135deg, #FAFAFF 0%, #F0F9FF 100%);
-}
-
-.tool-card.type-default {
-  border-color: #E5E7EB;
+  border-left: 3px solid #3B82F6;
 }
 
 @keyframes slideIn {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -292,9 +285,8 @@ export default {
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.8), rgba(248,248,248,0.8));
-  border-bottom: 1px solid #E5E7EB;
-  gap: 12px;
+  border-bottom: 1px solid var(--color-border, #f3f4f6);
+  gap: 10px;
   flex-wrap: wrap;
 }
 
@@ -304,17 +296,17 @@ export default {
   gap: 8px;
 }
 
-/* Type badge - primary color indicator */
+/* Type badge - modern pill style */
 .type-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   font-size: 10px;
-  font-weight: 700;
-  padding: 4px 8px;
-  border-radius: 4px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
   white-space: nowrap;
 }
 
@@ -324,33 +316,28 @@ export default {
 }
 
 .type-badge.badge-call {
-  background: #EDE9FE;
+  background: rgba(139, 92, 246, 0.1);
   color: #7C3AED;
-  border: 1px solid #DDD6FE;
 }
 
 .type-badge.badge-result {
-  background: #D1FAE5;
+  background: rgba(16, 185, 129, 0.1);
   color: #059669;
-  border: 1px solid #A7F3D0;
 }
 
 .type-badge.badge-error {
-  background: #FEE2E2;
+  background: rgba(239, 68, 68, 0.1);
   color: #DC2626;
-  border: 1px solid #FECACA;
 }
 
 .type-badge.badge-info {
-  background: #E0F2FE;
-  color: #0284C7;
-  border: 1px solid #BAE6FD;
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563EB;
 }
 
 .type-badge.badge-default {
-  background: #F1F5F9;
+  background: #f3f4f6;
   color: #64748B;
-  border: 1px solid #E2E8F0;
 }
 
 .agent-badge {
@@ -358,53 +345,40 @@ export default {
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 4px;
-  letter-spacing: 0.3px;
-}
-
-.badge-icon {
-  font-size: 10px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.2px;
+  background: #f8fafc;
+  color: #475569;
 }
 
 .agent-badge.supervisor {
-  background: linear-gradient(135deg, #E0E7FF 0%, #C7D2FE 100%);
+  background: linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%);
   color: #4338CA;
 }
 
 .agent-badge.analyst {
-  background: linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%);
+  background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%);
   color: #047857;
 }
 
 .agent-badge.system {
-  background: linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%);
+  background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%);
   color: #1D4ED8;
-}
-
-.tool-divider {
-  color: #9CA3AF;
-  font-size: 12px;
-}
-
-.tool-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text);
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   margin-left: auto;
 }
 
 .tool-name {
   font-size: 12px;
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--color-text, #1f2937);
 }
 
 .time {
@@ -412,7 +386,7 @@ export default {
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  color: var(--color-text-muted);
+  color: #9CA3AF;
   font-family: 'SF Mono', Monaco, Consolas, monospace;
   white-space: nowrap;
 }
@@ -424,10 +398,9 @@ export default {
   font-size: 10px;
   font-weight: 600;
   color: #7C3AED;
-  background: linear-gradient(135deg, #EDE9FE 0%, #DDD6FE 100%);
+  background: rgba(139, 92, 246, 0.08);
   padding: 3px 8px;
-  border-radius: 4px;
-  border: 1px solid #C4B5FD;
+  border-radius: 20px;
   white-space: nowrap;
   cursor: default;
 }
@@ -437,35 +410,33 @@ export default {
 }
 
 .tool-body {
-  padding: 14px;
+  padding: 12px 14px;
   font-size: 13px;
 }
 
-/* Message boxes - integrated into card type styling */
+/* Message boxes */
 .message-box {
   display: flex;
   align-items: flex-start;
   gap: 10px;
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .message-box.info {
-  background: rgba(224, 242, 254, 0.5);
-  border: 1px solid #BAE6FD;
+  background: rgba(59, 130, 246, 0.06);
 }
 
 .message-box.info .message-icon {
-  color: #0284C7;
+  color: #3B82F6;
 }
 
 .message-box.error {
-  background: rgba(254, 226, 226, 0.5);
-  border: 1px solid #FECACA;
+  background: rgba(239, 68, 68, 0.06);
 }
 
 .message-box.error .message-icon {
-  color: #DC2626;
+  color: #EF4444;
 }
 
 .message-icon {
@@ -474,35 +445,35 @@ export default {
 }
 
 .message-content {
-  color: var(--color-text);
+  color: var(--color-text, #374151);
   line-height: 1.5;
 }
 
-/* Tool call section */
+/* Tool sections */
 .tool-call-section,
 .tool-result-section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 /* Code blocks */
 .code-block {
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
-  border: 1px solid #E5E7EB;
+  border: 1px solid #e5e7eb;
 }
 
 .code-header {
   padding: 6px 10px;
-  background: #1E1E1E;
-  border-bottom: 1px solid #2D2D2D;
+  background: #1E293B;
+  border-bottom: 1px solid #334155;
 }
 
 .code-lang {
   font-size: 10px;
   font-weight: 600;
-  color: #9CA3AF;
+  color: #94A3B8;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -515,7 +486,7 @@ export default {
   padding: 12px;
   background: linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%);
   border: 1px solid #DDD6FE;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .sim-icon {
@@ -526,7 +497,7 @@ export default {
   justify-content: center;
   background: #7C3AED;
   color: white;
-  border-radius: 8px;
+  border-radius: 10px;
   flex-shrink: 0;
 }
 
@@ -567,7 +538,7 @@ export default {
   border: none;
   cursor: pointer;
   font-size: 12px;
-  color: var(--color-primary);
+  color: var(--color-primary, #7C3AED);
   font-weight: 500;
   padding: 4px 0;
   transition: color 0.2s;
@@ -589,15 +560,15 @@ export default {
 
 .raw-json {
   margin-top: 8px;
-  background: #1E1E1E;
-  color: #E5E7EB;
+  background: #1E293B;
+  color: #E2E8F0;
   padding: 12px;
-  border-radius: 6px;
+  border-radius: 8px;
   font-family: 'SF Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
   line-height: 1.5;
   overflow-x: auto;
-  border: 1px solid #374151;
+  border: 1px solid #334155;
 }
 
 /* Expand transition */
@@ -617,20 +588,20 @@ export default {
   padding: 10px 12px;
   background: #F0FDF4;
   border: 1px solid #BBF7D0;
-  border-radius: 6px;
+  border-radius: 8px;
   color: #059669;
   font-weight: 500;
   font-size: 12px;
 }
 
 .result-output.python {
-  background: #1E1E1E;
-  color: #A5D6FF;
+  background: #0F172A;
+  color: #7DD3FC;
   font-family: 'SF Mono', ui-monospace, SFMono-Regular, Monaco, Consolas, monospace;
   font-size: 11px;
   line-height: 1.5;
   padding: 12px;
-  border-left: 3px solid #10B981;
+  border-radius: 8px;
 }
 
 .result-output.python pre {
