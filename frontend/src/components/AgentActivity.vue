@@ -110,7 +110,7 @@
       </div>
 
       <!-- Activity Feed -->
-      <div class="feed-container">
+      <div class="feed-container" ref="feedContainer">
         <TransitionGroup name="card-list">
           <ToolCallCard
             v-for="(step, idx) in validTraces"
@@ -205,7 +205,7 @@ export default {
     },
     scrollToBottom() {
       this.$nextTick(() => {
-        const el = this.$refs.activityBody;
+        const el = this.$refs.feedContainer;
         if (el) {
           // Always scroll to bottom when new traces come in
           el.scrollTo({
@@ -343,9 +343,9 @@ export default {
 
 .activity-body {
   flex: 1;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   padding: 20px;
-  scroll-behavior: smooth;
 }
 
 /* Run Info Card */
@@ -528,6 +528,8 @@ export default {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  scroll-behavior: smooth;
 }
 
 /* Transitions */
