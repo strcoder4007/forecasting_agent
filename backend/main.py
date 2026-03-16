@@ -100,6 +100,7 @@ class ForecastStatusResponse(BaseModel):
     message: str
     logs: list[str] = []
     traces: list[dict] = []
+    summary: Optional[str] = None
 
 
 class HistoryItem(BaseModel):
@@ -224,6 +225,8 @@ def _update_progress(run_id: str, progress: float, stage: str, message: str, tra
     """Callback to update progress for a run."""
     with runs_lock:
         if run_id in runs_storage:
+            if runs_storage[run_id]["status"] == "cancelled":
+                raise Exception("Cancelled by user")
             runs_storage[run_id]["progress"] = progress
             runs_storage[run_id]["stage"] = stage
             if message:
@@ -234,6 +237,16 @@ def _update_progress(run_id: str, progress: float, stage: str, message: str, tra
             storage.save_run(runs_storage[run_id])
 
 
+
+@app.post("/api/forecast/cancel/{run_id}")
+async def cancel_forecast(run_id: str):
+    """Cancel a running forecast."""
+    with runs_lock:
+        if run_id not in runs_storage:
+            raise HTTPException(status_code=404, detail="Run not found")
+        runs_storage[run_id]["status"] = "cancelled"
+    return {"message": "Run cancellation requested", "run_id": run_id}
+
 @app.get("/api/forecast/status/{run_id}", response_model=ForecastStatusResponse)
 async def get_forecast_status(run_id: str):
     """Get the status of a forecast run."""
@@ -242,6 +255,7 @@ async def get_forecast_status(run_id: str):
             raise HTTPException(status_code=404, detail="Run not found")
 
         run = runs_storage[run_id]
+        summary = run.get("model_outputs", {}).get("final_summary", None) if run.get("model_outputs") else None
         return ForecastStatusResponse(
             run_id=run["run_id"],
             status=run["status"],
@@ -250,6 +264,7 @@ async def get_forecast_status(run_id: str):
             message=run["message"],
             logs=run.get("logs", []),
             traces=run.get("traces", []),
+            summary=summary
         )
 
 

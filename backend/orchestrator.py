@@ -26,10 +26,42 @@ class AutonomousForecaster:
     def _update(self, progress, stage, msg, trace_event=None):
         self.current_progress = progress
         self.current_stage = stage
+        
+        # If no specific trace event is provided, create a general status trace
+        if trace_event is None:
+            trace_event = {
+                "type": "info",
+                "agent": "system",
+                "name": "Pipeline",
+                "message": msg
+            }
+            
+        # Always also add a trace for the stage change
+        stage_trace = {
+            "type": "info",
+            "agent": "system", 
+            "name": "Stage",
+            "message": f"Stage: {stage} - {msg}"
+        }
+        
         self.progress_callback(progress, stage, msg, trace_event)
+        # Also emit stage change as a separate trace event for better visibility
+        self.progress_callback(progress, stage, msg, stage_trace)
 
     def _call_agent(self, prompt, sys_instruction, model, max_turns=5):
         history = []
+        
+        def log_progress(message: str) -> str:
+            """Logs a progress or status message directly to the user's trace panel. Call this to keep the user informed of your intermediate findings (e.g. 'Found 4 CSV files', 'Training XGBoost model...')."""
+            trace_call = {
+                "type": "info",
+                "agent": "system",
+                "name": "Update",
+                "message": message
+            }
+            self._update(self.current_progress, self.current_stage, message, trace_event=trace_call)
+            return "Logged successfully."
+
         
         for turn in range(max_turns):
             try:
@@ -41,10 +73,21 @@ class AutonomousForecaster:
                     contents=history + [types.Content(role="user", parts=[types.Part.from_text(text=user_msg)])],
                     config=types.GenerateContentConfig(
                         system_instruction=sys_instruction,
-                        tools=[execute_python],
+                        tools=[execute_python, log_progress],
                         temperature=0.1,
                     )
                 )
+
+                if response.usage_metadata:
+                    self._update(self.current_progress, self.current_stage, "Agent generated response.", trace_event={
+                        "type": "info",
+                        "agent": "system",
+                        "message": "Pipeline model execution completed.",
+                        "tokens": {
+                            "input": response.usage_metadata.prompt_token_count,
+                            "output": response.usage_metadata.candidates_token_count
+                        }
+                    })
                 
                 if not response.function_calls:
                     return response.text
@@ -58,25 +101,34 @@ class AutonomousForecaster:
                         
                         trace_call = {
                             "type": "tool_call",
-                            "agent": "pipeline",
+                            "agent": "system",
                             "name": "execute_python",
                             "args": {"code": code}
                         }
                         self._update(self.current_progress, self.current_stage, f"Executing Python code ({len(code)} bytes)...", trace_event=trace_call)
                         
+                        import time
+                        start_time = time.time()
                         result = execute_python(code)
+                        duration = time.time() - start_time
                         
                         trace_res = {
                             "type": "tool_result" if not result.startswith("System Error") else "error",
-                            "agent": "pipeline",
+                            "agent": "system",
                             "name": "execute_python",
                             "result": str(result)[:1000] + "..." if len(str(result)) > 1000 else str(result),
                             "message": str(result)[:1000] + "..." if result.startswith("System Error") else ""
                         }
-                        self._update(self.current_progress, self.current_stage, f"Python execution completed.", trace_event=trace_res)
+                        self._update(self.current_progress, self.current_stage, f"Python execution completed in {duration:.1f}s.", trace_event=trace_res)
                         
                         function_responses.append(
                             types.Part.from_function_response(name=fn.name, response={"result": str(result)[:5000]})
+                        )
+                    elif fn.name == "log_progress":
+                        message = fn.args.get("message", "")
+                        res = log_progress(message)
+                        function_responses.append(
+                            types.Part.from_function_response(name=fn.name, response={"result": res})
                         )
                         
                 if function_responses:
@@ -96,40 +148,88 @@ class AutonomousForecaster:
     def run(self):
         try:
             # Phase 1: Explorer
+            self._update(5, "exploring", "🔍 PHASE 1: Starting data exploration...")
             self._update(10, "exploring", "Exploring raw data files...")
-            explorer_sys = "You are an Autonomous Data Explorer. You use execute_python to run pandas scripts on raw data. You find schemas, primary keys, and data issues. When finished, write a final markdown summary of the data and what must be done to clean it for forecasting."
-            explorer_prompt = f"Look in the '{self.data_dir}' directory. Inspect the files. Figure out how they relate. Pay attention to negative quantities, dates, and string-formatted numeric columns. Return a final markdown report of your findings."
+            explorer_sys = """You are an Autonomous Data Explorer. Your job is to explore the data directory and understand the data structure.
+
+IMPORTANT - You MUST use the log_progress tool to log every step of your work:
+- Before running ANY execute_python call, call log_progress with a descriptive message like "Discovering CSV files in data directory..."
+- After each major finding, call log_progress like "Found 3 CSV files: sales.csv, inventory.csv, store_master.csv"
+- When you discover something important, call log_progress like "Detected negative quantities in sales data - need to handle these"
+
+Always use execute_python to run pandas scripts. Always call log_progress before execute_python."""
+            explorer_prompt = f"""Look in the '{self.data_dir}' directory. 
+
+Your tasks:
+1. List all files in the directory
+2. Read each file and understand its structure
+3. Identify key columns (dates, quantities, IDs)
+4. Note any data quality issues (negative values, missing data, etc.)
+
+Use execute_python to explore. Use log_progress to keep the user informed at every step. Return a detailed markdown report of your findings."""
             self.analysis_report = self._call_agent(explorer_prompt, explorer_sys, self.lite_model, max_turns=6)
-            self._update(25, "exploring", "Data exploration completed.")
+            self._update(25, "exploring", "✅ Data exploration completed.")
             
             # Phase 2: Transformer
-            self._update(30, "transforming", "Writing custom ETL scripts...")
-            etl_sys = "You are an Autonomous ETL Engineer. You use execute_python to write pandas code that cleans and merges data into a single feature matrix."
-            etl_prompt = f"Here is the data analysis:\n{self.analysis_report}\n\nWrite a Python script using execute_python to load data from '{self.data_dir}/', clean it, aggregate sales to a weekly level, engineer basic rolling features, and save the final pandas DataFrame to '{self.features_path}'. Ensure the final dataframe has combo_id, store_id, sku_id, week_start, qty_sold, and some features."
+            self._update(30, "transforming", "🔧 PHASE 2: Starting ETL pipeline...")
+            self._update(35, "transforming", "Writing custom ETL scripts...")
+            etl_sys = """You are an Autonomous ETL Engineer. Your job is to clean, transform, and prepare data for modeling.
+
+IMPORTANT - You MUST use the log_progress tool to log every step:
+- Before loading data: "Loading sales data from CSV..."
+- Before transformations: "Applying data cleaning: handling negative quantities..."
+- Before aggregations: "Aggregating daily sales to weekly level..."
+- Before feature engineering: "Creating rolling window features (7-day, 14-day, 28-day)..."
+- Before saving: "Saving processed features to parquet file..."
+
+Always call log_progress before execute_python. Be descriptive about what you're doing."""
+            etl_prompt = f"""Here is the data analysis:\n{self.analysis_report}\n\nWrite a Python script using execute_python to:
+1. Load data from '{self.data_dir}/'
+2. Clean the data (handle negatives, missing values, etc.)
+3. Aggregate sales to weekly level
+4. Engineer rolling features (lags, rolling means, etc.)
+5. Save to '{self.features_path}'
+
+Required output columns: combo_id, store_id, sku_id, week_start, qty_sold, and feature columns.
+
+Use log_progress to describe each step. Save the final DataFrame to parquet format."""
             etl_summary = self._call_agent(etl_prompt, etl_sys, self.pro_model, max_turns=6)
-            self._update(50, "transforming", "ETL pipeline completed.")
+            self._update(50, "transforming", "✅ ETL pipeline completed.")
 
             # Phase 3: Modeler
+            self._update(55, "training", "🤖 PHASE 3: Starting model training...")
             self._update(60, "training", "Training models dynamically...")
-            model_sys = "You are an Autonomous AutoML Agent. You use execute_python to train machine learning models and save forecasts."
-            model_prompt = f"Load '{self.features_path}'. Train at least one model (e.g., LightGBM) to forecast next week's sales per combo_id. \nYou MUST save the final predictions to '{self.results_path}' as a CSV with these EXACT columns: store_id, sku_id, combo_id, forecast_week_start, horizon, point_forecast, lower_80, upper_80, model_used, demand_segment, is_zero_forecast, wmape, mape. Use dummy/heuristic values if necessary for metrics (e.g. demand_segment='smooth', wmape=0.5) but the column names must match EXACTLY."
-            model_summary = self._call_agent(model_prompt, model_sys, self.pro_model, max_turns=6)
-            self._update(85, "training", "Model training completed.")
+            model_sys = """You are an Autonomous AutoML Agent. Your job is to train machine learning models and generate forecasts.
 
-            # Load results
-            self._update(90, "synthesizing", "Synthesizing output...")
-            
+IMPORTANT - You MUST use log_progress to log every step:
+- Before loading features: "Loading feature matrix from parquet..."
+- Before training: "Training LightGBM model with X features..."
+- During evaluation: "Evaluating model performance on validation set..."
+- Before predictions: "Generating forecasts for next week..."
+- Before saving: "Saving predictions to CSV..."
+
+Always call log_progress before execute_python. Describe what model you're training and the metrics."""
+            model_prompt = f"""Load '{self.features_path}'. Train at least one model (e.g., LightGBM) to forecast next week's sales per combo_id.
+
+Required output columns: store_id, sku_id, combo_id, forecast_week_start, horizon, point_forecast, lower_80, upper_80, model_used, demand_segment, is_zero_forecast, wmape, mape.
+
+Use log_progress to describe each step. Save predictions to '{self.results_path}'."""
+            model_summary = self._call_agent(model_prompt, model_sys, self.pro_model, max_turns=6)
+            self._update(85, "training", "✅ Model training completed.")
+
+            # Phase 4: Data Finalization
+            self._update(95, "finalizing", "Finalizing forecast data...")
+
             if os.path.exists(self.results_path):
                 results_df = pd.read_csv(self.results_path)
                 results = results_df.to_dict(orient="records")
             else:
                 raise Exception(f"Agent failed to save results to {self.results_path}. Modeler summary: {model_summary}")
-            
-            features = pd.read_parquet(self.features_path) if os.path.exists(self.features_path) else None
-            
-            self._update(100, "done", "Forecast complete!")
-            return results, {"feature_cols": list(features.columns) if features is not None else []}, features
 
+            features = pd.read_parquet(self.features_path) if os.path.exists(self.features_path) else None
+
+            self._update(100, "done", "Forecast complete!")
+            return results, {"feature_cols": list(features.columns) if features is not None else [], "final_summary": ""}, features
         except Exception as e:
             self._update(self.current_progress, "failed", f"Orchestration failed: {str(e)}")
             raise e

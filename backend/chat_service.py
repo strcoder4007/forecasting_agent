@@ -37,7 +37,7 @@ class ChatService:
         
         self.pending_action = "LOAD_RUN"
         self.pending_payload = run_id
-        return f"System instructed to load run {run_id}."
+        return f"SYSTEM_TRIGGER: RUN_LOADED {run_id}"
 
     def get_historical_runs(self, limit: int = 5) -> str:
         """Returns a list of recent forecast runs, their IDs, timestamps, and status."""
@@ -177,18 +177,167 @@ class ChatService:
             
             # Using native loop here since the tools handle their own trace appends
             response = chat_session.send_message(complex_query)
-            
+
+            if response.usage_metadata:
+                self.trace.append({
+                    "type": "info",
+                    "agent": "analyst",
+                    "message": "Analyst completed data analysis.",
+                    "tokens": {
+                        "input": response.usage_metadata.prompt_token_count,
+                        "output": response.usage_metadata.candidates_token_count
+                    }
+                })
+
             return response.text
         except Exception as e:
             self.trace.append({"type": "error", "agent": "analyst", "name": "analyze_data", "message": str(e)})
             return f"Analyst Error: {str(e)}"
+
+    def synthesize_forecast_results(self, run_results: list, current_run_id: str) -> str:
+        """Synthesizes forecast results into a comprehensive summary when a forecast completes."""
+        if not run_results:
+            return "Forecast completed but no results were generated."
+
+        results_df = pd.DataFrame(run_results)
+
+        # Calculate key metrics
+        total_predictions = len(results_df)
+        unique_stores = results_df['store_id'].nunique() if 'store_id' in results_df.columns else 0
+        unique_skus = results_df['sku_id'].nunique() if 'sku_id' in results_df.columns else 0
+
+        # WMAPE calculation
+        wmape = None
+        wmape_value = None
+        if 'wmape' in results_df.columns:
+            valid_wmape = results_df['wmape'].dropna()
+            if len(valid_wmape) > 0:
+                weights = results_df.loc[valid_wmape.index, 'qty_sold'] if 'qty_sold' in results_df.columns else None
+                if weights is not None and weights.sum() > 0:
+                    wmape_value = (valid_wmape * weights).sum() / weights.sum()
+                else:
+                    wmape_value = valid_wmape.mean()
+                wmape = f"{wmape_value:.2%}"
+
+        # Total forecast value
+        total_forecast = 0
+        if 'point_forecast' in results_df.columns:
+            total_forecast = results_df['point_forecast'].sum()
+
+        # Model distribution
+        model_counts = {}
+        if 'model_used' in results_df.columns:
+            model_counts = results_df['model_used'].value_counts().to_dict()
+
+        # Segment distribution
+        segment_counts = {}
+        if 'demand_segment' in results_df.columns:
+            segment_counts = results_df['demand_segment'].value_counts().to_dict()
+
+        # Zero forecasts
+        zero_forecasts = 0
+        if 'is_zero_forecast' in results_df.columns:
+            zero_forecasts = results_df['is_zero_forecast'].sum()
+
+        # Top stores by forecast
+        top_stores = []
+        if 'store_id' in results_df.columns and 'point_forecast' in results_df.columns:
+            store_forecasts = results_df.groupby('store_id')['point_forecast'].sum().sort_values(ascending=False)
+            top_stores = store_forecasts.head(5).to_dict()
+
+        # Top SKUs by forecast
+        top_skus = []
+        if 'sku_id' in results_df.columns and 'point_forecast' in results_df.columns:
+            sku_forecasts = results_df.groupby('sku_id')['point_forecast'].sum().sort_values(ascending=False)
+            top_skus = sku_forecasts.head(5).to_dict()
+
+        # High error items (if available)
+        high_error_items = []
+        if 'wmape' in results_df.columns:
+            high_error = results_df[results_df['wmape'] > 0.5].head(5)
+            if 'sku_id' in results_df.columns and 'store_id' in results_df.columns:
+                high_error_items = high_error[['sku_id', 'store_id', 'wmape']].values.tolist()
+
+        # Build summary - make it conversational and exciting
+        summary_parts = [
+            f"🎉 **Forecast Complete!**",
+            f"",
+            f"Just finished processing **{total_predictions:,}** predictions covering **{unique_stores}** stores and **{unique_skus}** SKUs. ",
+            f"Total forecasted demand: **{total_forecast:,.0f}** units.",
+        ]
+
+        if wmape:
+            summary_parts.append(f"")
+            accuracy_msg = "Excellent work!" if wmape_value and wmape_value < 0.2 else "Good baseline, let's improve it with more data!"
+            summary_parts.append(f"📊 **Accuracy:** WMAPE of **{wmape}** - {accuracy_msg}")
+
+        if zero_forecasts > 0:
+            summary_parts.append(f"")
+            summary_parts.append(f"⚠️ **{zero_forecasts:,}** items have zero forecast (likely out of stock).")
+
+        if model_counts:
+            summary_parts.append(f"")
+            summary_parts.append(f"**🤖 Models Used:**")
+            for model, count in sorted(model_counts.items(), key=lambda x: -x[1])[:3]:
+                pct = count / total_predictions * 100
+                summary_parts.append(f"- {model}: {count:,} ({pct:.0f}%)")
+
+        if segment_counts:
+            summary_parts.append(f"")
+            summary_parts.append(f"**📦 Demand Segments:**")
+            for segment, count in sorted(segment_counts.items(), key=lambda x: -x[1]):
+                pct = count / total_predictions * 100
+                summary_parts.append(f"- {segment}: {count:,} ({pct:.0f}%)")
+
+        if top_stores:
+            summary_parts.append(f"")
+            summary_parts.append(f"**🏪 Top Stores by Forecast:**")
+            for store, forecast in list(top_stores.items())[:3]:
+                summary_parts.append(f"- Store {store}: {forecast:,.0f} units")
+
+        if top_skus:
+            summary_parts.append(f"")
+            summary_parts.append(f"**📦 Top SKUs by Forecast:**")
+            for sku, forecast in list(top_skus.items())[:3]:
+                summary_parts.append(f"- SKU {sku}: {forecast:,.0f} units")
+
+        summary_parts.append(f"")
+        summary_parts.append(f"---")
+        summary_parts.append(f"🚀 **What's next?** Here are some things we can explore:")
+        summary_parts.append(f"")
+        summary_parts.append(f"- 📈 **Deep dive**: \"Show me the worst performing store-SKU combinations\"")
+        summary_parts.append(f"- 🎯 **What-if**: \"What if we run a 20% promotion on SKU X at Store Y?\"")
+        summary_parts.append(f"- 📊 **Risks**: \"Which items are at risk of stockout next week?\"")
+        summary_parts.append(f"- 🔍 **Compare**: \"How does this compare to the previous run?\"")
+        summary_parts.append(f"")
+        summary_parts.append(f"Just ask me anything!")
+
+        if segment_counts:
+            summary_parts.append(f"")
+            summary_parts.append(f"**Demand Segments:**")
+            for segment, count in segment_counts.items():
+                pct = count / total_predictions * 100
+                summary_parts.append(f"- {segment}: {count} ({pct:.1f}%)")
+
+        summary_parts.append(f"")
+        summary_parts.append(f"---")
+        summary_parts.append(f"Great news! Your forecast is ready. What would you like to explore next? Here are some suggestions:")
+        summary_parts.append(f"- **Dive deeper**: \"Show me the worst performing SKUs\" or \"Which stores have the highest error?\"")
+        summary_parts.append(f"- **What-if analysis**: \"What if we ran a 20% promotion on SKU X at Store Y?\"")
+        summary_parts.append(f"- **Historical comparison**: \"How does this run compare to last week?\"")
+
+        return "\n".join(summary_parts)
 
     def chat(self, messages: list, current_run_id: str = None, run_results: list = None, model_outputs: dict = None, features: pd.DataFrame = None, all_runs: dict = None) -> tuple[str, str, str, list]:
         self.pending_action = None
         self.pending_payload = None
         self.all_runs = all_runs or {}
         self.trace = []
-        
+
+        # Check for FORECAST_COMPLETED trigger
+        latest_user_query = messages[-1]["content"] if messages else ""
+        is_forecast_completed = "SYSTEM_TRIGGER: FORECAST_COMPLETED" in latest_user_query
+
         if run_results:
             self.current_results_df = pd.DataFrame(run_results)
             try:
@@ -205,23 +354,80 @@ class ChatService:
             self.current_features_df = None
             self.current_model_outputs = None
 
+        # Handle FORECAST_COMPLETED trigger - synthesize results directly
+        if is_forecast_completed and run_results and current_run_id:
+            self.trace.append({
+                "type": "info",
+                "agent": "supervisor",
+                "name": "Forecast Complete",
+                "message": "Pipeline finished! Synthesizing results..."
+            })
+
+            # Calculate metrics and generate summary
+            synthesis = self.synthesize_forecast_results(run_results, current_run_id)
+
+            # Add the synthesis summary to trace for visibility in AgentActivity
+            self.trace.append({
+                "type": "info",
+                "agent": "supervisor",
+                "name": "Results Summary",
+                "message": "Forecast complete! Check the chat for detailed results."
+            })
+
+            # Store the completed run
+            results_df = pd.DataFrame(run_results)
+            wmape = None
+            if 'wmape' in results_df.columns:
+                valid_wmape = results_df['wmape'].dropna()
+                if len(valid_wmape) > 0:
+                    wmape = valid_wmape.mean()
+
+            self.all_runs[current_run_id] = {
+                "run_id": current_run_id,
+                "status": "completed",
+                "timestamp": pd.Timestamp.now().isoformat(),
+                "avg_wmape": wmape,
+                "total_predictions": len(results_df),
+            }
+
+            # Return synthesis immediately - no need for LLM call
+            return synthesis, "FORECAST_COMPLETED", current_run_id, self.trace
+
         supervisor_system = f"""
-        You are the Supervisor of a Supply Chain Forecasting Agent.
-        
+        You are the **Lead Forecast Supervisor**, the intelligent conductor of this Supply Chain AI. 
+        Your goal is to guide the user through the forecasting lifecycle with clarity, proactivity, and professional expertise.
+
         Current Context:
-        - Active Run Loaded: {"Yes (" + current_run_id + ")" if current_run_id else "No"}
-        - Data Loaded: {"Yes" if self.current_results_df is hasattr(self, 'current_results_df') and self.current_results_df is not None else "No"}
-        
+        - Active Run ID: {current_run_id if current_run_id else "None"}
+        - Data Context: {"Loaded & Ready" if self.current_results_df is not None else "Not Loaded"}
+        {f"- Stats: {len(self.current_results_df)} predictions generated." if self.current_results_df is not None else ""}
+
+        Your Personality:
+        - Enthusiastic and proactive - you genuinely care about helping the user succeed.
+        - Professional yet conversational - like a skilled colleague, not a robot.
+        - Aware: You know exactly what's happening in the pipeline at all times.
+        - Forward-thinking: Always suggest the next logical step.
+
+        Handling Special Triggers:
+        - If you receive "**SYSTEM_TRIGGER: FORECAST_COMPLETED**", it means the background pipeline just finished.
+          The results have already been synthesized and presented to the user. Your job now is to:
+          1. Acknowledge the completion warmly and professionally.
+          2. Highlight 2-3 key insights from the results.
+          3. Suggest specific, actionable next steps based on what would be most valuable.
+          4. If anything looks concerning (high errors, many zero forecasts), flag it proactively.
+        - If you receive "**SYSTEM_TRIGGER: RUN_LOADED**", acknowledge that the historical data is now in your active memory and summarize its key metrics. Be specific - mention WMAPE, total predictions, stores/SKUs covered.
+
         Your Capabilities (Use Tools!):
-        - `start_new_forecast()`: Run this if the user wants to generate a new forecast.
-        - `get_historical_runs(limit)`: Check memory to see past forecasts if the user asks about history.
-        - `load_historical_run(run_id)`: Load a specific past forecast into context.
-        - `analyze_data(complex_query)`: If the user asks a specific question about the data, trends, numbers, or a "what-if" scenario, YOU MUST hand it off by calling this tool with their question. Do NOT guess the answer.
-        
+        - `start_new_forecast()`: Start a fresh pipeline.
+        - `get_historical_runs(limit)`: Browse past performance.
+        - `load_historical_run(run_id)`: Bring a past run into context.
+        - `analyze_data(complex_query)`: HAND OFF to the Analyst for ANY numeric, SQL, or simulation questions. DO NOT speculate on data values yourself.
+
         Instructions:
-        1. Maintain conversation context based on history.
-        2. If they are vague (e.g. "load previous"), use `get_historical_runs`, look at the IDs, and then ask them which one, or just load the most recent one autonomously.
-        3. Once a tool returns, synthesize a friendly response. 
+        1. If a run is loaded, ALWAYS use `analyze_data` to get real numbers - never guess or estimate.
+        2. Be specific with numbers - don't say "many" when you can say "247".
+        3. When presenting insights, explain WHY they matter.
+        4. End responses with a clear suggestion or question to keep the conversation moving.
         """
 
         # Format message history for GenAI SDK
@@ -260,6 +466,17 @@ class ChatService:
                     temperature=0.3,
                 )
             )
+
+            if response.usage_metadata:
+                self.trace.append({
+                    "type": "info",
+                    "agent": "supervisor",
+                    "message": "Supervisor reasoned next steps.",
+                    "tokens": {
+                        "input": response.usage_metadata.prompt_token_count,
+                        "output": response.usage_metadata.candidates_token_count
+                    }
+                })
             
             # Manual function call loop
             while response.function_calls:
@@ -317,6 +534,17 @@ class ChatService:
                         temperature=0.3,
                     )
                 )
+
+                if response.usage_metadata:
+                    self.trace.append({
+                        "type": "info",
+                        "agent": "supervisor",
+                        "message": "Supervisor processed tool results.",
+                        "tokens": {
+                            "input": response.usage_metadata.prompt_token_count,
+                            "output": response.usage_metadata.candidates_token_count
+                        }
+                    })
 
             return response.text, self.pending_action, self.pending_payload, self.trace
             

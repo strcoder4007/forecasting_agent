@@ -3,6 +3,7 @@ import os
 import joblib
 import pandas as pd
 import threading
+import json
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "forecasts.duckdb")
 MODELS_DIR = os.path.join(os.path.dirname(__file__), "data", "models")
@@ -36,6 +37,12 @@ def init_storage():
                 log_message VARCHAR
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS run_traces (
+                run_id VARCHAR,
+                trace_json VARCHAR
+            )
+        """)
         conn.close()
 
 def save_run(run_dict):
@@ -67,6 +74,11 @@ def save_run(run_dict):
             conn.execute("DELETE FROM run_logs WHERE run_id=?", [run_dict["run_id"]])
             for log in run_dict.get("logs", []):
                 conn.execute("INSERT INTO run_logs VALUES (?, ?)", [run_dict["run_id"], log])
+                
+            # Save traces
+            conn.execute("DELETE FROM run_traces WHERE run_id=?", [run_dict["run_id"]])
+            for trace in run_dict.get("traces", []):
+                conn.execute("INSERT INTO run_traces VALUES (?, ?)", [run_dict["run_id"], json.dumps(trace)])
                 
             # If completed, save heavy data
             if run_dict["status"] == "completed":
@@ -112,6 +124,10 @@ def load_all_runs_metadata():
                 # Load logs
                 logs_df = conn.execute("SELECT log_message FROM run_logs WHERE run_id=?", [run_id]).df()
                 runs[run_id]["logs"] = logs_df["log_message"].tolist()
+                
+                # Load traces
+                traces_df = conn.execute("SELECT trace_json FROM run_traces WHERE run_id=?", [run_id]).df()
+                runs[run_id]["traces"] = [json.loads(t) for t in traces_df["trace_json"].tolist()]
         finally:
             conn.close()
     return runs
@@ -148,6 +164,7 @@ def delete_run_data(run_id):
         try:
             conn.execute("DELETE FROM runs WHERE run_id=?", [run_id])
             conn.execute("DELETE FROM run_logs WHERE run_id=?", [run_id])
+            conn.execute("DELETE FROM run_traces WHERE run_id=?", [run_id])
             res_table = f"results_{run_id.replace('-', '_')}"
             feat_table = f"features_{run_id.replace('-', '_')}"
             conn.execute(f"DROP TABLE IF EXISTS {res_table}")

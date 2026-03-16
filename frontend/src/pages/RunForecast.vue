@@ -72,24 +72,25 @@
             </div>
           </div>
 
-          <div 
-            v-for="(msg, idx) in messages" 
-            :key="idx"
-            class="message"
-            :class="msg.role"
-          >
-            <div v-if="msg.role === 'ai'" class="avatar">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                <circle cx="12" cy="12" r="10"></circle>
-                <path d="M12 16v-4"></path>
-                <path d="M12 8h.01"></path>
-              </svg>
+          <template v-for="(msg, idx) in messages" :key="idx">
+            <div
+              v-if="!msg.hidden"
+              class="message"
+              :class="msg.role"
+            >
+              <div v-if="msg.role === 'ai'" class="avatar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <path d="M12 16v-4"></path>
+                  <path d="M12 8h.01"></path>
+                </svg>
+              </div>
+              
+              <div class="message-content">
+                <div class="text" v-html="formatMessage(msg.content)"></div>
+              </div>
             </div>
-            
-            <div class="message-content">
-              <div class="text" v-html="formatMessage(msg.content)"></div>
-            </div>
-          </div>
+          </template>
 
           <!-- Inline Thinking Indicator -->
           <div v-if="loading" class="message ai">
@@ -107,18 +108,24 @@
         </div>
 
         <div class="input-area">
-          <input 
+          <textarea 
             ref="chatInput"
             v-model="query" 
-            @keyup.enter="sendMessage"
-            type="text" 
+            @keydown.enter.exact.prevent="sendMessage"
+            @input="adjustTextarea"
             placeholder="Ask something or run a forecast..." 
             :disabled="loading || forecasting"
-          />
-          <button @click="sendMessage" :disabled="!query.trim() || loading || forecasting" class="send-btn" :class="{ 'pulse': loading || forecasting }">
+            rows="1"
+          ></textarea>
+          <button v-if="!forecasting" @click="sendMessage" :disabled="!query.trim() || loading" class="send-btn" :class="{ 'pulse': loading }">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
               <line x1="22" y1="2" x2="11" y2="13"></line>
               <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+          <button v-else @click="cancelForecast" class="cancel-btn" title="Stop Forecast">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+              <rect x="6" y="6" width="12" height="12"></rect>
             </svg>
           </button>
         </div>
@@ -174,6 +181,14 @@ export default {
     if (this.pollInterval) clearInterval(this.pollInterval)
   },
   methods: {
+    adjustTextarea(e) {
+      const el = e.target;
+      el.style.height = 'auto';
+      el.style.height = (el.scrollHeight) + 'px';
+      if (el.value === '') {
+        el.style.height = 'auto';
+      }
+    },
     formatMessage(text) {
       return marked(text)
     },
@@ -192,15 +207,22 @@ export default {
         this.$router.replace({ query: {} })
       }
     },
-    async sendMessage() {
-      if (!this.query.trim() || this.loading || this.forecasting) return
+    async sendMessage(overrideText = null, isHidden = false) {
+      if (!overrideText && (!this.query.trim() || this.loading || this.forecasting)) return
 
-      const userText = this.query.trim()
-      this.query = ''
-      
-      this.messages.push({ role: 'user', type: 'text', content: userText })
-      this.loading = true
-      
+      const userText = overrideText || this.query.trim()
+      if (!overrideText) {
+        this.query = ''
+        this.$nextTick(() => { if (this.$refs.chatInput) this.$refs.chatInput.style.height = 'auto' })
+      }
+
+      this.messages.push({ 
+        role: 'user', 
+        type: 'text', 
+        content: userText,
+        hidden: isHidden 
+      })
+      this.loading = true      
 
       
       this.scrollToBottom()
@@ -260,7 +282,7 @@ export default {
       try {
         const res = await axios.post('/api/forecast/run')
         this.currentRunId = res.data.run_id
-        
+
         this.pipelineStatus = 'running'
         this.pipelineStage = 'starting'
         this.pollInterval = setInterval(() => this.checkForecastStatus(), 1500)
@@ -271,7 +293,26 @@ export default {
         this.forecasting = false
       }
     },
-    async checkForecastStatus() {
+    async cancelForecast() {
+      if (!this.currentRunId) return;
+      try {
+        await axios.post(`/api/forecast/cancel/${this.currentRunId}`);
+        this.forecasting = false;
+        clearInterval(this.pollInterval);
+        this.pipelineStatus = 'idle';
+        this.pipelineStage = '';
+        this.currentTrace.push({
+          type: 'error',
+          agent: 'system',
+          name: 'Status',
+          message: 'Forecast cancelled by user.'
+        });
+        this.currentRunId = null;
+        this.$router.replace({ query: {} });
+      } catch (e) {
+        console.error("Failed to cancel forecast:", e);
+      }
+    },    async checkForecastStatus() {
       if (!this.currentRunId) return
       try {
         const res = await axios.get(`/api/forecast/status/${this.currentRunId}`)
@@ -318,6 +359,10 @@ export default {
         if (data.status === 'completed') {
           this.forecasting = false
           clearInterval(this.pollInterval)
+          
+          // Instead of showing the static summary, we trigger the Supervisor to synthesize results live
+          this.sendMessage('SYSTEM_TRIGGER: FORECAST_COMPLETED', true)
+          
           await this.loadResultsIfMissing()
         } else if (data.status === 'failed') {
           this.forecasting = false
@@ -829,7 +874,7 @@ export default {
   gap: 12px;
 }
 
-.input-area input {
+.input-area textarea {
   flex: 1;
   padding: 14px 20px;
   border: 1px solid var(--color-border);
@@ -837,17 +882,21 @@ export default {
   outline: none;
   font-size: 14px;
   font-family: inherit;
-  transition: var(--transition);
+  transition: border-color 0.2s;
   background: var(--color-bg);
+  resize: none;
+  min-height: 24px;
+  max-height: 150px;
+  overflow-y: auto;
 }
 
-.input-area input:focus {
+.input-area textarea:focus {
   border-color: var(--color-primary);
   background: var(--color-bg-card);
   box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.08);
 }
 
-.input-area input::placeholder {
+.input-area textarea::placeholder {
   color: var(--color-text-muted);
 }
 
@@ -876,9 +925,27 @@ export default {
   cursor: not-allowed;
 }
 
+.cancel-btn {
+  width: 44px;
+  height: 44px;
+  background: #EF4444;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.cancel-btn:hover {
+  background: #DC2626;
+}
+
 .workspace-wrapper {
   display: grid;
-  grid-template-columns: 3fr 1fr;
+  grid-template-columns: 60% 40%;
   gap: 20px;
   height: calc(100vh - 80px);
   padding: 10px 0;
