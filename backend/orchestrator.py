@@ -46,12 +46,19 @@ class AutonomousForecaster:
         
         for turn in range(max_turns):
             try:
-                # Add prompt to history if it's the first turn, or a continuation message
-                user_msg = prompt if turn == 0 else "Proceed. If you have finished your task, please return the final text summary of what you did and do not call tools."
+                # Build contents: history + current message
+                contents = list(history)
+                
+                if turn == 0:
+                    # First turn: send the initial prompt
+                    contents.append(types.Content(role="user", parts=[types.Part.from_text(text=prompt)]))
+                else:
+                    # Subsequent turns: after function response, just ask to continue
+                    contents.append(types.Content(role="user", parts=[types.Part.from_text(text="Proceed. If you have finished your task, please return the final text summary of what you did and do not call tools.")]))
                 
                 response = self.client.models.generate_content(
                     model=model,
-                    contents=history + [types.Content(role="user", parts=[types.Part.from_text(text=user_msg)])],
+                    contents=contents,
                     config=types.GenerateContentConfig(
                         system_instruction=sys_instruction,
                         tools=[execute_python, log_progress],
@@ -73,6 +80,7 @@ class AutonomousForecaster:
                 if not response.function_calls:
                     return response.text
                 
+                # Add model's function call to history
                 history.append(response.candidates[0].content)
                 
                 function_responses = []
@@ -113,6 +121,7 @@ class AutonomousForecaster:
                         )
                         
                 if function_responses:
+                    # Add function responses as user turn to history
                     history.append(
                         types.Content(
                             role="user", 
