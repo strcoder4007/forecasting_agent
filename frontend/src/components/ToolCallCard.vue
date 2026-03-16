@@ -261,25 +261,21 @@ export default {
   border-color: #cbd5e1;
 }
 
-/* Type-specific left border - subtle but clear */
+/* Type-specific background hues */
 .tool-card.type-tool-call {
-  border-left: 4px solid #6366f1;
-  background: linear-gradient(90deg, #f5f3ff 0%, #ffffff 15%);
+  background: linear-gradient(135deg, #eef2ff 0%, #ffffff 60%);
 }
 
 .tool-card.type-tool-result {
-  border-left: 4px solid #10b981;
-  background: linear-gradient(90deg, #ecfdf5 0%, #ffffff 15%);
+  background: linear-gradient(135deg, #ecfdf5 0%, #ffffff 60%);
 }
 
 .tool-card.type-error {
-  border-left: 4px solid #ef4444;
-  background: linear-gradient(90deg, #fef2f2 0%, #ffffff 15%);
+  background: linear-gradient(135deg, #fef2f2 0%, #ffffff 60%);
 }
 
 .tool-card.type-info {
-  border-left: 4px solid #0ea5e9;
-  background: linear-gradient(90deg, #f0f9ff 0%, #ffffff 15%);
+  background: linear-gradient(135deg, #f0f9ff 0%, #ffffff 60%);
 }
 
 /* Animation - smooth entrance */
