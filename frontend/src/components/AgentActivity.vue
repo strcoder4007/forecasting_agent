@@ -207,13 +207,11 @@ export default {
       this.$nextTick(() => {
         const el = this.$refs.activityBody;
         if (el) {
-          const isScrolledToBottom = el.scrollHeight - el.clientHeight <= el.scrollTop + 150;
-          if (isScrolledToBottom) {
-            el.scrollTo({
-              top: el.scrollHeight,
-              behavior: 'smooth'
-            });
-          }
+          // Always scroll to bottom when new traces come in
+          el.scrollTo({
+            top: el.scrollHeight,
+            behavior: 'smooth'
+          });
         }
       });
     },
@@ -528,6 +526,8 @@ export default {
 .feed-container {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 /* Transitions */
