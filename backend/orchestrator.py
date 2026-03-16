@@ -26,27 +26,7 @@ class AutonomousForecaster:
     def _update(self, progress, stage, msg, trace_event=None):
         self.current_progress = progress
         self.current_stage = stage
-        
-        # If no specific trace event is provided, create a general status trace
-        if trace_event is None:
-            trace_event = {
-                "type": "info",
-                "agent": "system",
-                "name": "Pipeline",
-                "message": msg
-            }
-            
-        # Always also add a trace for the stage change
-        stage_trace = {
-            "type": "info",
-            "agent": "system", 
-            "name": "Stage",
-            "message": f"Stage: {stage} - {msg}"
-        }
-        
         self.progress_callback(progress, stage, msg, trace_event)
-        # Also emit stage change as a separate trace event for better visibility
-        self.progress_callback(progress, stage, msg, stage_trace)
 
     def _call_agent(self, prompt, sys_instruction, model, max_turns=5):
         history = []

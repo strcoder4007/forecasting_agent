@@ -332,16 +332,13 @@ export default {
         if (data.logs && data.logs.length > this.forecastLogCount) {
           const newLogs = data.logs.slice(this.forecastLogCount)
           newLogs.forEach(log => {
-            // Only add logs if we don't have rich traces, or if it's a major stage change
-            if (!data.traces || data.traces.length === 0) {
-                this.currentTrace.push({
-                  type: 'info',
-                  agent: 'system',
-                  name: 'Pipeline',
-                  message: log
-                })
-                hasNewTraces = true;
-            }
+            this.currentTrace.push({
+              type: 'info',
+              agent: 'system',
+              name: 'Pipeline',
+              message: log
+            })
+            hasNewTraces = true;
           })
           this.forecastLogCount = data.logs.length
         }
