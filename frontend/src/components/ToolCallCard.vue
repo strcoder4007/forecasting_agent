@@ -220,7 +220,7 @@ export default {
       return 0;
     },
     totalTokens() {
-      return this.inputTokens() + this.outputTokens();
+      return this.inputTokens + this.outputTokens;
     },
     tokenDisplay() {
       const formatNum = (n) => {
@@ -229,7 +229,7 @@ export default {
         }
         return n.toString();
       };
-      return `${formatNum(this.inputTokens())} in / ${formatNum(this.outputTokens())} out`;
+      return `${formatNum(this.inputTokens)} in / ${formatNum(this.outputTokens)} out`;
     }
   },
   methods: {
